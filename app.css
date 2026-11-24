@@ -370,6 +370,12 @@ ol.passos { margin: 0; padding-left: 20px; display: flex; flex-direction: column
 .r-texto { margin-top: 8px !important; background: var(--ouro-tint); border-radius: 8px; padding: 6px 8px; font-size: 12px; }
 .roteiro-ganchos { margin-top: 14px; background: #fff; border: 1px solid var(--linha); border-radius: 12px; padding: 12px 14px; font-size: 13px; }
 .roteiro-ganchos ol { margin: 0; padding-left: 18px; }
+/* Vários roteiros na mesma copy (Lulu, 24/11/2026) */
+.roteiro-bloco + .roteiro-bloco { margin-top: 26px; padding-top: 22px; border-top: 2px dashed var(--linha); }
+.roteiro-sub { margin: 18px 2px 0; }
+.roteiro-sub h3 { margin: 0 0 2px; font-family: "Playfair Display", serif; font-size: 19px; }
+.roteiro-sub .sub { margin: 0; color: var(--muted); font-size: 12.5px; }
+@media print { .roteiro-bloco + .roteiro-bloco { break-before: page; border-top: 0; } }
 @media (max-width: 640px) { .roteiro-colunas { display: none; } .roteiro-linha { grid-template-columns: 1fr; gap: 6px; } }
 @media print {
   body.com-roteiro > *:not(.roteiro-tela) { display: none !important; }

@@ -1034,18 +1034,47 @@ REGRAS: entregue tudo agora, sem fazer perguntas antes: o que faltar fica [entre
     };
     return { cenas: cenas.map((c) => ({ parte: parte(c.parte), fala: c.fala.join(" "), imagem: c.imagem.join(" "), texto: c.texto.join(" ") })).filter((c) => c.fala || c.imagem), ganchos };
   }
+  // [Lulu, 24/11/2026] Várias copies coladas na mesma caixa viram vários roteiros.
+  // Um roteiro novo começa em "MAPA DA REFERÊNCIA", num segundo "ROTEIRO NOVO" ou numa linha "---".
+  function dividirCopias(txt) {
+    const linhas = String(txt).replace(/\r/g, "").split("\n");
+    const limpa = (l) => l.replace(/\*\*|__/g, "").replace(/^#+\s*/, "").trim();
+    const eMapa = (l) => /^MAPA DA REFER/i.test(l), eRot = (l) => /^ROTEIRO( NOVO| \d+)?\s*:?$/i.test(l), eSep = (l) => /^(-{3,}|={3,}|_{3,})$/.test(l);
+    const blocos = []; let atual = [], temRot = false;
+    const fecha = () => { if (atual.join("").trim()) blocos.push(atual.join("\n")); atual = []; temRot = false; };
+    linhas.forEach((cru) => {
+      const l = limpa(cru);
+      if (eSep(l)) { fecha(); return; }
+      if (eMapa(l) || (eRot(l) && temRot)) fecha();
+      if (eRot(l)) temRot = true;
+      atual.push(cru);
+    });
+    fecha();
+    const comCenas = blocos.filter((b) => cenasDaCopy(b).cenas.length);
+    return comCenas.length ? comCenas : [String(txt)];
+  }
   function abrirRoteiro(txt, produto) {
-    const { cenas, ganchos } = cenasDaCopy(txt);
-    const palavras = cenas.reduce((n, c) => n + (c.fala.replace(/\[[^\]]*\]/g, "").match(/\S+/g) || []).length, 0), seg = Math.round(palavras / 3.25);
-    const comCena = cenas.some((c) => c.imagem), nomeProd = String(produto || "").trim().slice(0, 60);
-    const antigo = $("#roteiroCenas"); if (antigo) antigo.remove();
-    const m = document.createElement("div"); m.id = "roteiroCenas"; m.className = "roteiro-tela"; m.setAttribute("role", "dialog"); m.setAttribute("aria-label", "Roteiro de gravação");
-    m.innerHTML = `<div class="roteiro-caixa">
-      <div class="roteiro-topo"><div><p class="rot">Roteiro de gravação</p><h2>Vídeo TikTok${nomeProd ? " · " + esc(nomeProd) : ""}</h2><p class="sub">${cenas.length} cenas · ~${seg}s de fala (${palavras} palavras)</p></div>
-        <div class="controles"><button class="btn sec pequeno" type="button" data-acao="imprimir-roteiro">Imprimir</button><button class="btn pequeno" type="button" data-acao="fechar-roteiro">Fechar</button></div></div>
+    const roteiros = dividirCopias(txt).map((b) => cenasDaCopy(b));
+    const contar = (cenas) => cenas.reduce((n, c) => n + (c.fala.replace(/\[[^\]]*\]/g, "").match(/\S+/g) || []).length, 0);
+    const nomeProd = String(produto || "").trim().slice(0, 60), varios = roteiros.length > 1;
+    const totalCenas = roteiros.reduce((n, r) => n + r.cenas.length, 0);
+    const bloco = ({ cenas, ganchos }, k) => {
+      const palavras = contar(cenas), seg = Math.round(palavras / 3.25), comCena = cenas.some((c) => c.imagem);
+      return `<section class="roteiro-bloco">
+      ${varios ? `<div class="roteiro-sub"><h3>Roteiro ${k + 1}</h3><p class="sub">${cenas.length} cenas · ~${seg}s de fala (${palavras} palavras)</p></div>` : ""}
       <div class="roteiro-colunas${comCena ? "" : " uma"}"><span>Áudio / fala</span>${comCena ? "<span>Imagem / cena</span>" : ""}</div>
       ${cenas.map((c, i) => `<div class="roteiro-linha${comCena ? "" : " uma"}"><div class="r-fala"><p class="rot">Fala ${i + 1}${c.parte ? " · " + esc(c.parte) : ""}</p><p>${esc(c.fala || "(sem fala)").replace(/\[([^\]]*)\]/g, '<span class="r-lacuna">[$1]</span>')}</p>${c.texto ? `<p class="r-texto">Texto na tela: <b>${esc(c.texto)}</b></p>` : ""}</div>${comCena ? `<div class="r-cena"><p class="rot">Cena ${i + 1}</p><p>${c.imagem ? esc(c.imagem) : "<i>sem cena descrita</i>"}</p></div>` : ""}</div>`).join("") || '<p class="vazio">Não achei cenas nessa copy.</p>'}
       ${ganchos.length ? `<div class="roteiro-ganchos"><p class="rot">Ganchos para testar</p><ol>${ganchos.map((g) => `<li>${esc(g)}</li>`).join("")}</ol></div>` : ""}
+    </section>`;
+    };
+    const um = roteiros[0], palavras1 = contar(um.cenas);
+    const resumo = varios ? `${roteiros.length} roteiros · ${totalCenas} cenas no total` : `${um.cenas.length} cenas · ~${Math.round(palavras1 / 3.25)}s de fala (${palavras1} palavras)`;
+    const antigo = $("#roteiroCenas"); if (antigo) antigo.remove();
+    const m = document.createElement("div"); m.id = "roteiroCenas"; m.className = "roteiro-tela"; m.setAttribute("role", "dialog"); m.setAttribute("aria-label", "Roteiro de gravação");
+    m.innerHTML = `<div class="roteiro-caixa">
+      <div class="roteiro-topo"><div><p class="rot">Roteiro de gravação</p><h2>Vídeo TikTok${nomeProd ? " · " + esc(nomeProd) : ""}</h2><p class="sub">${resumo}</p></div>
+        <div class="controles"><button class="btn sec pequeno" type="button" data-acao="imprimir-roteiro">Imprimir</button><button class="btn pequeno" type="button" data-acao="fechar-roteiro">Fechar</button></div></div>
+      ${roteiros.map(bloco).join("")}
     </div>`;
     document.body.appendChild(m); document.body.classList.add("com-roteiro");
     m.addEventListener("click", (e) => { if (e.target === m) { m.remove(); document.body.classList.remove("com-roteiro"); } });
