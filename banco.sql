@@ -2,6 +2,7 @@
 -- BANCO DO MEU PAINEL TIKTOK SHOP (curso Shopflow)
 -- Cole este arquivo inteiro no Supabase: SQL Editor > New query > Run.
 -- Pode rodar de novo sem problema: não apaga nada.
+-- Se aparecer "Potential issue detected", clique em "Run query": é só porque ele recria as regras de segurança.
 --
 -- Regra de ouro: cada usuário só enxerga e só mexe nas linhas dele.
 -- Todas as tabelas têm user_id e a trava (RLS) "user_id = auth.uid()".
@@ -22,8 +23,18 @@ create table if not exists public.perfis (
 );
 -- Meta do mês em vendas (GMV) e a aparência que o aluno escolheu
 alter table public.perfis add column if not exists meta_gmv numeric(12, 2);
-alter table public.perfis add column if not exists estilo text not null default 'classico' check (estilo in ('classico', 'grafico', 'minimal'));
-alter table public.perfis add column if not exists cor text not null default 'cafe' check (cor in ('cafe', 'grafite', 'rosa', 'oliva', 'azul'));
+-- Aparência: 4 modelos (minimal, editorial, glass, neon) e 8 paletas, mais uma cor principal opcional (#rrggbb).
+-- Os nomes antigos continuam aceitos: o painel converte sozinho para a direção nova.
+alter table public.perfis add column if not exists estilo text not null default 'editorial';
+alter table public.perfis add column if not exists cor text not null default 'cafe';
+alter table public.perfis drop constraint if exists perfis_estilo_check;
+alter table public.perfis add constraint perfis_estilo_check check (estilo in ('minimal', 'editorial', 'glass', 'neon', 'light', 'dark', 'bold', 'clean', 'colorful', 'classico', 'grafico')) not valid;
+alter table public.perfis alter column estilo set default 'minimal';
+-- Menu lateral recolhido ou aberto (a escolha de cada usuário)
+alter table public.perfis add column if not exists menu_recolhido boolean not null default false;
+alter table public.perfis drop constraint if exists perfis_cor_check;
+alter table public.perfis add constraint perfis_cor_check check (cor in ('cafe', 'oliva', 'grafite', 'rosa', 'azul', 'lavanda', 'terracota', 'energia')) not valid;
+alter table public.perfis add column if not exists cor_custom text check (cor_custom ~ '^#[0-9a-fA-F]{6}$');
 -- Como você quer ser chamado e os primeiros passos marcados (modo Começando)
 alter table public.perfis add column if not exists apelido text check (char_length(apelido) <= 40);
 alter table public.perfis add column if not exists passos jsonb not null default '{}'::jsonb;
@@ -91,6 +102,13 @@ create table if not exists public.produtos (
   categoria   text check (categoria in ('tech', 'casa', 'beleza', 'moda', 'fitness', 'infantil', 'outros')),
   primary key (user_id, produto_id)
 );
+
+-- Categorias novas (10 + Outros) com subcategoria, e produto esgotado (sai das sugestões até vender de novo).
+-- Os nomes antigos de categoria continuam aceitos: o painel converte sozinho.
+alter table public.produtos drop constraint if exists produtos_categoria_check;
+alter table public.produtos add constraint produtos_categoria_check check (categoria in ('moda', 'beleza', 'casa', 'eletronicos', 'auto', 'pets', 'bebe', 'saude', 'alimentos', 'joias', 'outros', 'tech', 'fitness', 'infantil')) not valid;
+alter table public.produtos add column if not exists subcategoria text check (char_length(subcategoria) <= 60);
+alter table public.produtos add column if not exists esgotado_em date;
 
 -- 4. IMPORTAÇÕES: um registro por arquivo enviado
 create table if not exists public.importacoes (
@@ -166,3 +184,14 @@ revoke all on public.perfis, public.pedidos, public.produtos, public.importacoes
 insert into public.perfis (user_id, email)
 select id, email from auth.users
 on conflict (user_id) do nothing;
+
+-- Mais de um perfil do TikTok no mesmo painel. '' = perfil principal; os outros ficam listados em perfis.contas.
+alter table public.perfis add column if not exists contas jsonb not null default '[]'::jsonb;
+alter table public.pedidos add column if not exists conta text not null default '' check (char_length(conta) <= 40);
+alter table public.videos add column if not exists conta text not null default '' check (char_length(conta) <= 40);
+alter table public.amostras add column if not exists conta text not null default '' check (char_length(conta) <= 40);
+alter table public.importacoes add column if not exists conta text not null default '' check (char_length(conta) <= 40);
+create index if not exists pedidos_user_conta on public.pedidos (user_id, conta);
+
+-- Avisa o Supabase que as colunas mudaram (sem isso o painel pode dizer "column ... schema cache")
+notify pgrst, 'reload schema';
