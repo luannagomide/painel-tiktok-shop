@@ -84,3 +84,22 @@
 }
 .t-tiktok { --lu-cor: #1f6fb2; }
 .lu-st { padding: 3px 10px; font-size: 11.5px; }
+
+/* ---------- Ganhos por fonte e Início (lulu-inicio.js) ---------- */
+.lu-ganhos .lu-total { font-family: var(--fonte-num, inherit); font-size: var(--tam-num, 30px); font-weight: var(--peso-num, 700); margin: 0 0 14px; font-variant-numeric: tabular-nums; }
+.lu-fontes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.lu-fontes li { display: grid; grid-template-columns: minmax(110px, 1fr) 2fr auto; gap: 4px 12px; align-items: center; }
+.lu-fonte-nome { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lu-fonte-barra { height: 10px; border-radius: 6px; background: var(--tint); overflow: hidden; }
+.lu-fonte-barra span { display: block; height: 100%; border-radius: 6px; background: var(--lu-cor, var(--ouro)); min-width: 2px; }
+.lu-fonte-val { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.lu-fonte-val small { display: block; font-weight: 500; color: var(--muted); font-size: 11.5px; }
+.lu-fonte-det { grid-column: 1 / -1; color: var(--muted); font-size: 12px; margin-top: -4px; }
+.f-tiktok { --lu-cor: #1f6fb2; } .f-publi { --lu-cor: #c0587e; } .f-ugc { --lu-cor: #7a6bc4; } .f-evento { --lu-cor: #d9822b; } .f-outro { --lu-cor: #8a8a8a; } .f-extra { --lu-cor: #2f8f62; }
+.lu-ponto[class*="f-"] { background: var(--lu-cor); }
+.lu-secao { margin: 22px 0 12px; }
+.lu-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.lu-meta { height: 6px; border-radius: 4px; background: var(--tint2); margin-top: 8px; overflow: hidden; }
+.lu-meta span { display: block; height: 100%; background: var(--ouro); }
+#menuInicio { margin-bottom: 4px; }
+@media (max-width: 520px) { .lu-fontes li { grid-template-columns: 1fr auto; } .lu-fonte-barra { grid-column: 1 / -1; order: 3; } }

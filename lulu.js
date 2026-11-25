@@ -13,6 +13,8 @@
   const STATUS_MARCA = { prospeccao: "Quero abordar", conversando: "Conversando", parceira: "Parceira", pausada: "Pausada" };
   const STATUS_PUBLI = { proposta: "Proposta", fechada: "Fechada", gravando: "Gravando", entregue: "Entregue", paga: "Paga", cancelada: "Cancelada" };
   const A_RECEBER = ["fechada", "gravando", "entregue"];
+  const TIPOS_TRAB = { publi: "Publi", ugc: "UGC", evento: "Evento / presença", outro: "Outro trabalho" };
+  const MESES_LONGOS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
   const ICONES = {
     marcas: '<path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M9 21v-5h6v5M9 11h6"/>',
     publis: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/>',
@@ -23,7 +25,7 @@
 
   window.PAINEL_EXTRAS.push(function (P) {
     const { esc, real, toast, $, irPara } = P;
-    const L = { marcas: [], publis: [], ok: false, erro: "", editMarca: null, editPubli: null, publiContrato: null };
+    const L = { marcas: [], publis: [], ganhos: [], semGanhos: false, periodo: "mes", ok: false, erro: "", editMarca: null, editPubli: null, publiContrato: null };
 
     /* ---------- datas e números ---------- */
     const hoje = () => P.hojeISO();
@@ -42,7 +44,7 @@
     const ok = ({ data, error }) => { if (error) throw error; return data; };
     const amigavel = (e) => {
       const t = String((e && (e.message || e.details)) || e || "");
-      if (/relation .*(marcas|publis).* does not exist|could not find the table|schema cache/i.test(t)) return "Falta rodar o banco_lulu.sql no Supabase (SQL Editor > New query > cole > Run).";
+      if (/relation .*(marcas|publis|ganhos).* does not exist|could not find the table|schema cache|column .*tipo/i.test(t)) return "Falta rodar o banco_lulu.sql no Supabase (SQL Editor > New query > cole > Run).";
       return P.traduz ? P.traduz(e) : t;
     };
     async function carregar(forcar) {
@@ -51,6 +53,7 @@
       try {
         L.marcas = ok(await sb().from("marcas").select("*").order("nome"));
         L.publis = ok(await sb().from("publis").select("*").order("criado_em", { ascending: false }));
+        try { L.ganhos = ok(await sb().from("ganhos").select("*").order("data", { ascending: false })); L.semGanhos = false; } catch (_) { L.ganhos = []; L.semGanhos = true; }
         L.ok = true; L.erro = "";
       } catch (e) { L.erro = amigavel(e); }
     }
@@ -135,7 +138,8 @@
           <form class="lu-form" id="luFormPubli">
             <div class="lu-grade">
               <div><label class="lbl" for="pMarca">Marca</label><select class="inp" id="pMarca"><option value="">(sem marca)</option>${L.marcas.map((m) => `<option value="${m.id}"${p.marca_id === m.id ? " selected" : ""}>${esc(m.nome)}</option>`).join("")}</select></div>
-              ${campo("pTitulo", "Nome da publi *", p.titulo, "text", 'required maxlength="160" placeholder="Ex.: J-San, terça em dobro"')}
+              <div><label class="lbl" for="pTipo">Tipo de trabalho</label><select class="inp" id="pTipo">${opcoes(TIPOS_TRAB, p.tipo || "publi")}</select></div>
+              ${campo("pTitulo", "Nome do trabalho *", p.titulo, "text", 'required maxlength="160" placeholder="Ex.: J-San, terça em dobro"')}
               <div><label class="lbl" for="pStatus">Situação</label><select class="inp" id="pStatus">${opcoes(STATUS_PUBLI, p.status || "proposta")}</select></div>
               ${campo("pValor", "Valor total (R$) *", p.valor, "number", 'min="0" step="0.01" required')}
               ${campo("pVideos", "Quantidade de vídeos", p.qtd_videos ?? 1, "number", 'min="0" max="100"')}
@@ -151,7 +155,7 @@
             <div class="controles"><button class="btn pequeno" type="submit">${L.editPubli ? "Salvar publi" : "Adicionar publi"}</button>${L.marcas.length ? "" : '<button class="link" type="button" data-tela="marcas">cadastrar uma marca antes</button>'}</div>
           </form></div>
         <div class="card"><div class="tabela-caixa"><table><thead><tr><th>Publi</th><th>Entrega</th><th>Pagamento</th><th class="num">Valor</th><th>Situação</th><th></th></tr></thead><tbody>
-          ${L.publis.map((x) => { const v = venc(x), atr = atrasada(x); return `<tr${x.status === "cancelada" ? ' class="lu-apagada"' : ""}><td><div class="td-nome">${esc(x.titulo)}</div><small class="lu-cinza">${esc(nomeMarca(x.marca_id))} · ${x.qtd_videos || 0} vídeo(s)${x.qtd_fotos ? ` · ${x.qtd_fotos} foto(s)` : ""}</small></td>
+          ${L.publis.map((x) => { const v = venc(x), atr = atrasada(x); return `<tr${x.status === "cancelada" ? ' class="lu-apagada"' : ""}><td><div class="td-nome">${esc(x.titulo)}</div><small class="lu-cinza">${TIPOS_TRAB[x.tipo] || "Publi"} · ${esc(nomeMarca(x.marca_id))} · ${x.qtd_videos || 0} vídeo(s)${x.qtd_fotos ? ` · ${x.qtd_fotos} foto(s)` : ""}</small></td>
             <td>${x.entrega_em ? P.dataBR(x.entrega_em) : "<small class='lu-cinza'>sem data</small>"}</td>
             <td>${x.status === "paga" ? `<span class="selo sobe">paga ${P.dataBR(x.pago_em)}</span>` : v ? `<span class="selo ${atr ? "desce" : ""}">${atr ? "atrasada · " : "vence "}${P.dataBR(v)}</span>` : ""}</td>
             <td class="num">${real(x.valor)}</td>
@@ -162,7 +166,7 @@
 
       el.querySelector("#luFormPubli").addEventListener("submit", async (e) => {
         e.preventDefault();
-        const dados = { marca_id: n(val(el, "pMarca")), titulo: val(el, "pTitulo"), status: val(el, "pStatus"), valor: n(val(el, "pValor")) || 0, qtd_videos: n(val(el, "pVideos")) ?? 0, duracao_video: val(el, "pDuracao") || null, qtd_fotos: n(val(el, "pFotos")) ?? 0, entrega_em: val(el, "pEntrega") || null, forma_pagamento: val(el, "pForma") || null, prazo_pagamento: n(val(el, "pPrazo")), licenca_meses: n(val(el, "pLicenca")), entregaveis: val(el, "pEntregaveis") || null, obs: val(el, "pObs") || null };
+        const dados = { marca_id: n(val(el, "pMarca")), tipo: val(el, "pTipo") || "publi", titulo: val(el, "pTitulo"), status: val(el, "pStatus"), valor: n(val(el, "pValor")) || 0, qtd_videos: n(val(el, "pVideos")) ?? 0, duracao_video: val(el, "pDuracao") || null, qtd_fotos: n(val(el, "pFotos")) ?? 0, entrega_em: val(el, "pEntrega") || null, forma_pagamento: val(el, "pForma") || null, prazo_pagamento: n(val(el, "pPrazo")), licenca_meses: n(val(el, "pLicenca")), entregaveis: val(el, "pEntregaveis") || null, obs: val(el, "pObs") || null };
         if (!dados.titulo) return;
         dados.vence_em = dados.entrega_em && dados.prazo_pagamento != null ? P.somaDias(dados.entrega_em, dados.prazo_pagamento) : null;
         if (dados.status === "paga" && !(p && p.pago_em)) dados.pago_em = hoje();
@@ -188,6 +192,48 @@
       };
     }
 
+    /* ============ GANHOS POR FONTE ============ */
+    // periodo: "mes" (mês atual), "ano" (ano atual), "tudo" ou "AAAA-MM"
+    // TikTok Shop = comissão dos pedidos válidos (liquidado + pendente) pela data do pedido, igual à aba Resultados.
+    // Trabalhos com marca e outros ganhos = o que já foi PAGO, pela data do pagamento.
+    function noPeriodo(iso, periodo) {
+      if (!iso) return false; const h = hoje();
+      if (periodo === "tudo") return true;
+      if (periodo === "ano") return iso.slice(0, 4) === h.slice(0, 4);
+      if (periodo === "mes") return iso.slice(0, 7) === h.slice(0, 7);
+      return iso.slice(0, 7) === periodo;
+    }
+    function nomePeriodo(periodo) {
+      const h = hoje();
+      if (periodo === "tudo") return "desde o começo";
+      if (periodo === "ano") return "em " + h.slice(0, 4);
+      const m = periodo === "mes" ? h.slice(0, 7) : periodo;
+      return "em " + MESES_LONGOS[+m.slice(5, 7) - 1] + (m.slice(0, 4) !== h.slice(0, 4) ? " de " + m.slice(0, 4) : "");
+    }
+    function ganhosPorFonte(periodo) {
+      const fontes = [];
+      const peds = (P.S.pedidos || []).filter((x) => noPeriodo(x.dia, periodo));
+      const t = P.somar ? P.somar(peds) : { c: 0, liq: 0, pedidos: 0 };
+      fontes.push({ chave: "tiktok", nome: "TikTok Shop", valor: t.c, detalhe: `${t.pedidos} pedido(s) · ${real(t.liq)} já liquidado` });
+      const pagas = L.publis.filter((x) => x.status === "paga" && noPeriodo(x.pago_em, periodo));
+      Object.entries(TIPOS_TRAB).forEach(([k, nome]) => {
+        const l = pagas.filter((x) => (x.tipo || "publi") === k);
+        if (l.length || k === "publi" || k === "ugc") fontes.push({ chave: k, nome, valor: l.reduce((a, x) => a + (+x.valor || 0), 0), detalhe: `${l.length} trabalho(s) pago(s)` });
+      });
+      const extras = {}; L.ganhos.filter((g) => noPeriodo(g.data, periodo)).forEach((g) => { const f = (g.fonte || "Outros").trim(); (extras[f] = extras[f] || { v: 0, q: 0 }); extras[f].v += +g.valor || 0; extras[f].q++; });
+      Object.entries(extras).sort((a, b) => b[1].v - a[1].v).forEach(([f, x]) => fontes.push({ chave: "extra", nome: f, valor: x.v, detalhe: `${x.q} lançamento(s)` }));
+      const total = fontes.reduce((a, f) => a + f.valor, 0);
+      return { fontes, total, nome: nomePeriodo(periodo) };
+    }
+    window.LULU_FIN = { carregar: () => carregar(true), ganhos: ganhosPorFonte, cardGanhos: (G) => cardGanhos(G, "mes", false), dados: () => L, venc, atrasada, nomeMarca, STATUS_PUBLI, TIPOS_TRAB };
+    const cardGanhos = (G, periodo, comBotoes) => {
+      const maior = Math.max(1, ...G.fontes.map((f) => f.valor));
+      return `<div class="card lu-ganhos"><div class="card-topo"><h2>Seus ganhos ${esc(G.nome)}</h2><span class="espaco"></span>${comBotoes ? `<div class="chips">${[["mes", "Mês"], ["ano", "Ano"], ["tudo", "Tudo"]].map(([k, n]) => `<button class="chip" type="button" data-lu="periodo" data-v="${k}" aria-pressed="${periodo === k}">${n}</button>`).join("")}</div>` : ""}</div>
+        <p class="lu-total">${real(G.total)}</p>
+        <ul class="lu-fontes">${G.fontes.map((f) => `<li><span class="lu-fonte-nome"><i class="lu-ponto f-${f.chave}"></i>${esc(f.nome)}</span><span class="lu-fonte-barra"><span class="f-${f.chave}" style="width:${Math.round((f.valor / maior) * 100)}%"></span></span><span class="lu-fonte-val">${real(f.valor)}<small>${G.total ? Math.round((f.valor / G.total) * 100) : 0}%</small></span><small class="lu-fonte-det">${f.detalhe}</small></li>`).join("")}</ul>
+        <p class="frase">TikTok Shop é a comissão dos pedidos válidos (liquidados e pendentes), pela data do pedido, como na aba Resultados${(P.S.conta && P.S.conta !== "*") ? ", do perfil escolhido no menu" : ""}. Publi, UGC e os outros ganhos contam quando foram pagos.</p></div>`;
+    };
+
     /* ============ FINANCEIRO ============ */
     async function telaFinanceiro(el) {
       await carregar(true);
@@ -201,7 +247,22 @@
       const meses = []; for (let k = 5; k >= 0; k--) { const d = new Date(+mes.slice(0, 4), +mes.slice(5, 7) - 1 - k, 1); meses.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); }
       const porMes = meses.map((m) => ({ m, v: soma(pagas.filter((p) => mesDe(p.pago_em) === m)) })), maior = Math.max(1, ...porMes.map((x) => x.v));
       const porMarca = Object.values(pagas.reduce((o, p) => { const k = p.marca_id || 0; (o[k] = o[k] || { nome: nomeMarca(p.marca_id), v: 0, q: 0 }); o[k].v += +p.valor || 0; o[k].q++; return o; }, {})).sort((a, b) => b.v - a.v);
-      el.innerHTML = cabeca("Financeiro", "O dinheiro das publis: o que já caiu, o que falta cair e o que está atrasado. As comissões do TikTok Shop continuam em Resultados.") + `
+      const G = ganhosPorFonte(L.periodo);
+      const fontesUsadas = [...new Set(L.ganhos.map((g) => g.fonte))];
+      const extrasPer = L.ganhos.filter((g) => noPeriodo(g.data, L.periodo));
+      el.innerHTML = cabeca("Financeiro", "Tudo o que você ganha, separado por fonte: TikTok Shop, publi, UGC e o resto. Embaixo, o que falta receber das marcas.") + `
+        ${cardGanhos(G, L.periodo, true)}
+        <div class="card"><div class="card-topo"><h2>Outros ganhos</h2><span class="sub">o que não é TikTok Shop nem trabalho com marca: Shopee, Amazon, aula, consultoria…</span></div>
+          ${L.semGanhos ? '<div class="aviso">Falta rodar o banco_lulu.sql atualizado no Supabase para lançar outros ganhos.</div>' : `
+          <form class="form-linha" id="luFormGanho">
+            <div class="curto" style="flex-basis:150px"><label class="lbl" for="gData">Data</label><input class="inp" id="gData" type="date" value="${hoje()}" required></div>
+            <div><label class="lbl" for="gFonte">De onde veio *</label><input class="inp" id="gFonte" list="gFontes" maxlength="60" required placeholder="Ex.: Shopee"><datalist id="gFontes">${fontesUsadas.map((f) => `<option value="${esc(f)}">`).join("")}</datalist></div>
+            <div><label class="lbl" for="gDesc">Descrição</label><input class="inp" id="gDesc" maxlength="200"></div>
+            <div class="curto"><label class="lbl" for="gValor">Valor (R$) *</label><input class="inp" id="gValor" type="number" min="0" step="0.01" required></div>
+            <button class="btn pequeno" type="submit">Lançar</button>
+          </form>
+          <ul class="lista-foco" style="margin-top:12px">${extrasPer.map((g) => `<li><span class="nome">${esc(g.fonte)}${g.descricao ? " · " + esc(g.descricao) : ""}</span><span class="val">${real(g.valor)} <button class="x" type="button" data-lu="apagar-ganho" data-id="${g.id}" aria-label="Apagar">×</button></span><small>${P.dataBR(g.data)}</small></li>`).join("") || `<li><span class="nome">Nenhum lançamento ${esc(G.nome)}.</span></li>`}</ul>`}</div>
+        <div class="secao-titulo lu-secao"><h2>Trabalhos com marca</h2></div>
         <div class="grade g4 lu-kpis">
           <div class="card kpi escuro"><p class="rot">Recebido no mês</p><p class="val">${real(soma(pagas.filter((p) => mesDe(p.pago_em) === mes)))}</p><small>${pagas.filter((p) => mesDe(p.pago_em) === mes).length} publi(s) paga(s)</small></div>
           <div class="card kpi"><p class="rot">A receber</p><p class="val">${real(soma(aReceber))}</p><small>${aReceber.length} publi(s) fechada(s)</small></div>
@@ -217,9 +278,18 @@
             <ul class="lista-foco">${porMarca.map((x) => `<li><span class="nome">${esc(x.nome)}</span><span class="val">${real(x.v)}</span><small>${x.q} publi(s)</small></li>`).join("") || '<li><span class="nome">Ainda não tem publi paga.</span></li>'}</ul></div>
         </div>`;
       el.onchange = null;
+      const fg = el.querySelector("#luFormGanho");
+      if (fg) fg.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const d = { data: val(el, "gData"), fonte: val(el, "gFonte"), descricao: val(el, "gDesc") || null, valor: n(val(el, "gValor")) || 0 };
+        if (!d.data || !d.fonte) return;
+        try { L.ganhos.unshift(await salvar("ganhos", d)); toast("Ganho lançado."); telaFinanceiro(el); } catch (er) { toast(amigavel(er), true); }
+      });
       el.onclick = async (e) => {
-        const t = e.target.closest("[data-lu='pagou']"); if (!t) return;
-        try { trocar(L.publis, await salvar("publis", { status: "paga", pago_em: hoje() }, +t.dataset.id)); toast("Marcada como paga hoje."); telaFinanceiro(el); } catch (er) { toast(amigavel(er), true); }
+        const t = e.target.closest("[data-lu]"); if (!t) return; const a = t.dataset.lu, id = +t.dataset.id;
+        if (a === "periodo") { L.periodo = t.dataset.v; telaFinanceiro(el); }
+        else if (a === "pagou") { try { trocar(L.publis, await salvar("publis", { status: "paga", pago_em: hoje() }, id)); toast("Marcada como paga hoje."); telaFinanceiro(el); } catch (er) { toast(amigavel(er), true); } }
+        else if (a === "apagar-ganho") { const g = L.ganhos.find((x) => x.id === id); if (!g || !confirm(`Apagar o lançamento de ${real(g.valor)} (${g.fonte})?`)) return; try { await apagar("ganhos", id); L.ganhos = L.ganhos.filter((x) => x.id !== id); telaFinanceiro(el); } catch (er) { toast(amigavel(er), true); } }
       };
     }
 

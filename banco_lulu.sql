@@ -115,3 +115,30 @@ grant usage, select on all sequences in schema public to authenticated;
 revoke all on public.roteiros, public.calendario from anon;
 
 notify pgrst, 'reload schema';
+
+-- =============================================================
+-- GANHOS (25/11/2026): tipo de trabalho e outros ganhos
+-- =============================================================
+
+-- Cada trabalho com marca agora diz o que é: publi, UGC, evento/presença ou outro
+alter table public.publis add column if not exists tipo text not null default 'publi' check (tipo in ('publi', 'ugc', 'evento', 'outro'));
+
+-- 5. OUTROS GANHOS: o que não é TikTok Shop nem trabalho com marca (ex.: Shopee, Amazon, aula, consultoria)
+create table if not exists public.ganhos (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  data       date not null,
+  fonte      text not null check (char_length(fonte) between 1 and 60),
+  descricao  text check (char_length(descricao) <= 200),
+  valor      numeric(12, 2) not null check (valor >= 0),
+  criado_em  timestamptz not null default now()
+);
+create index if not exists ganhos_user_data on public.ganhos (user_id, data);
+alter table public.ganhos enable row level security;
+drop policy if exists "so o dono" on public.ganhos;
+create policy "so o dono" on public.ganhos for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+grant select, insert, update, delete on public.ganhos to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+revoke all on public.ganhos from anon;
+
+notify pgrst, 'reload schema';
