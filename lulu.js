@@ -322,7 +322,9 @@
     TELAS.forEach(([id, nome]) => { P.NOMES[id] = nome; });
     const desenharMenu = () => {
       const box = document.getElementById("menuExtra"); if (!box) return;
-      box.innerHTML = `<div class="menu-grupo">Publis</div><nav class="menu-itens">${TELAS.map(([id, nome]) => `<button class="menu-item" type="button" data-tela="${id}" data-dica="${nome}"><svg class="i" viewBox="0 0 24 24">${ICONES[id]}</svg><span class="rotulo">${nome}</span></button>`).join("")}</nav>`;
+      // cada parte extra tem o seu grupo no menu (Publis aqui; Conteúdo vem do lulu-conteudo.js)
+      let g = box.querySelector('[data-grupo="publis"]'); if (!g) { g = document.createElement("div"); g.dataset.grupo = "publis"; box.prepend(g); }
+      g.innerHTML = `<div class="menu-grupo">Publis</div><nav class="menu-itens">${TELAS.map(([id, nome]) => `<button class="menu-item" type="button" data-tela="${id}" data-dica="${nome}"><svg class="i" viewBox="0 0 24 24">${ICONES[id]}</svg><span class="rotulo">${nome}</span></button>`).join("")}</nav>`;
     };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", desenharMenu); else desenharMenu();
   });

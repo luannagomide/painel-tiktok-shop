@@ -1,0 +1,218 @@
+/* =============================================================
+   PARTE EXTRA DA LULU (25/11/2026): Conteúdo = Calendário e Roteiros.
+   Fica fora dos arquivos do curso (a atualização do Ryan não mexe aqui).
+   Banco: public.roteiros e public.calendario (banco_lulu.sql).
+   O calendário também mostra, só para ver, as entregas das publis e o prazo das amostras.
+   ============================================================= */
+(function () {
+  "use strict";
+  window.PAINEL_EXTRAS = window.PAINEL_EXTRAS || [];
+
+  const TIPOS = { gravar: "Gravar", editar: "Editar", postar: "Postar", live: "Live", outro: "Outro" };
+  const PLATAFORMAS = { tiktok: "TikTok", instagram: "Instagram", ambos: "TikTok e Instagram", outro: "Outra" };
+  const STATUS_ROT = { ideia: "Ideia", pronto: "Pronto pra gravar", gravado: "Gravado", postado: "Postado" };
+  const FORMATOS = ["POV", "Explicativo", "Sem aparecer", "Storytelling", "Demonstração", "Narrado", "Live", "Outro"];
+  const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+  const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+  const ICONES = {
+    calendario: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 18h2"/>',
+    roteiros: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 11h7M9 15h7M9 19h4"/>'
+  };
+  const TELAS = [["calendario", "Calendário"], ["roteiros", "Roteiros"]];
+
+  window.PAINEL_EXTRAS.push(function (P) {
+    const { esc, toast, irPara } = P;
+    const L = { rot: [], cal: [], publis: [], videos: [], refs: [], dentro: false, ok: false, erro: "", mes: null, dia: null, editCal: null, editRot: null, prefill: null, filtro: "", busca: "" };
+    const hoje = () => P.hojeISO();
+    const pad = (x) => String(x).padStart(2, "0");
+    const sb = () => window.LULU_TESTE_SB || P.sb();
+    const ok = ({ data, error }) => { if (error) throw error; return data; };
+    const amigavel = (e) => {
+      const t = String((e && (e.message || e.details)) || e || "");
+      if (/relation .*(roteiros|calendario).* does not exist|could not find the table|schema cache/i.test(t)) return "Falta rodar o banco_lulu.sql (a versão com calendário e roteiros) no Supabase: SQL Editor > New query > cole > Run.";
+      return P.traduz ? P.traduz(e) : t;
+    };
+    async function carregar(forcar) {
+      if (L.ok && !forcar) return;
+      if (!sb()) { L.erro = "No modo demonstração esta parte não funciona."; return; }
+      try {
+        L.rot = ok(await sb().from("roteiros").select("*").order("criado_em", { ascending: false }));
+        L.cal = ok(await sb().from("calendario").select("*").order("data"));
+        try { L.publis = ok(await sb().from("publis").select("*").order("criado_em")); } catch (_) { L.publis = []; }
+        // do painel do curso: a agenda da aba Vídeos e as copies prontas da aba Criar
+        try { L.videos = ok(await sb().from("videos").select("*").order("data")); } catch (_) { L.videos = []; }
+        try { L.refs = ok(await sb().from("referencias").select("*").order("criado_em", { ascending: false })).filter((r) => (r.copy || "").trim()); } catch (_) { L.refs = []; }
+        L.ok = true; L.erro = "";
+      } catch (e) { L.erro = amigavel(e); }
+    }
+    const salvar = async (tab, d, id) => (id ? ok(await sb().from(tab).update(d).eq("id", id).select("*").single()) : ok(await sb().from(tab).insert(d).select("*").single()));
+    const apagar = async (tab, id) => ok(await sb().from(tab).delete().eq("id", id));
+    const trocar = (lista, item) => { const i = lista.findIndex((x) => x.id === item.id); if (i >= 0) lista[i] = item; else lista.unshift(item); };
+    const opcoes = (obj, atual) => Object.entries(obj).map(([k, v]) => `<option value="${k}"${atual === k ? " selected" : ""}>${v}</option>`).join("");
+    const val = (el, id) => { const i = el.querySelector("#" + id); return i ? i.value.trim() : ""; };
+    const cabeca = (t, p, extra = "") => `<div class="cabeca"><div><h1>${t}</h1><p>${p}</p></div>${extra}</div>`;
+    const rotDe = (id) => L.rot.find((r) => r.id === id) || null;
+    const refDe = (id) => L.refs.find((r) => String(r.id) === String(id)) || null;
+    const tituloRef = (r) => r.titulo || r.autor || (r.texto ? r.texto.split(/\s+/).slice(0, 10).join(" ") + "…" : "Copy da aba Criar");
+    const STATUS_V = { rascunho: "a gravar", agendado: "agendado", postado: "postado" };
+    // abre o roteiro de gravação de um item: da biblioteca (roteiro_id) ou da aba Criar (referencia_id)
+    const abrirDoItem = (x) => { const r = x.roteiro_id && rotDe(x.roteiro_id), f = x.referencia_id && refDe(x.referencia_id); if (r && r.texto) P.abrirRoteiro(r.texto, r.produto || r.titulo); else if (f) P.abrirRoteiro(f.copy, tituloRef(f)); else toast("Esse roteiro não tem texto.", true); };
+    const hora = (h) => (h ? h.slice(0, 5) : "");
+
+    /* ============ CALENDÁRIO ============ */
+    // tudo que cai num dia: itens da agenda + (só para ver) entregas de publi e prazo de amostra
+    function doDia(iso) {
+      const meus = L.cal.filter((c) => c.data === iso).sort((a, b) => (a.hora || "99").localeCompare(b.hora || "99")).map((c) => ({ ...c, origem: "agenda" }));
+      const entregas = L.publis.filter((p) => p.entrega_em === iso && !["paga", "cancelada", "entregue"].includes(p.status)).map((p) => ({ id: "p" + p.id, titulo: "Entregar publi: " + p.titulo, tipo: "entrega", origem: "publi" }));
+      const amostras = (P.S.amostras || []).filter((a) => a.decisao === "testando" && a.prazo_postar === iso).map((a) => ({ id: "a" + a.id, titulo: "Postar amostra: " + a.produto, tipo: "amostra", origem: "amostra" }));
+      const tiktok = L.videos.filter((v) => v.data === iso).map((v) => ({ id: "v" + v.id, vid: v.id, hora: v.hora, titulo: "TikTok: " + v.produto, tipo: "tiktok", origem: "video", status: v.status, feito: v.status === "postado" }));
+      return [...meus, ...tiktok, ...entregas, ...amostras].sort((a, b) => (a.hora || "99").localeCompare(b.hora || "99"));
+    }
+    async function telaCalendario(el) {
+      await carregar(!L.dentro); L.dentro = true;
+      if (L.erro) { el.innerHTML = cabeca("Calendário", "O que gravar, editar, postar e fazer de live em cada dia.") + `<div class="aviso">${esc(L.erro)}</div>`; return; }
+      L.mes = L.mes || hoje().slice(0, 7); L.dia = L.dia || hoje();
+      const [a, m] = L.mes.split("-").map(Number), primeiro = new Date(a, m - 1, 1), nDias = new Date(a, m, 0).getDate();
+      const celulas = []; for (let k = 0; k < primeiro.getDay(); k++) celulas.push(null); for (let d = 1; d <= nDias; d++) celulas.push(`${L.mes}-${pad(d)}`); while (celulas.length % 7) celulas.push(null);
+      const c = L.editCal ? L.cal.find((x) => x.id === L.editCal) || {} : {};
+      const pre = L.prefill || {};
+      const itensDia = doDia(L.dia);
+      const dLongo = (iso) => { const d = new Date(iso + "T12:00:00"); return `${["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"][d.getDay()]}, ${d.getDate()} de ${MESES[d.getMonth()]}`; };
+      const semana = (() => { const out = []; for (let k = 0; k < 7; k++) { const iso = P.somaDias(hoje(), k); doDia(iso).filter((x) => !x.feito).forEach((x) => out.push({ ...x, dia: iso })); } return out; })();
+      el.innerHTML = cabeca("Calendário", "O que gravar, editar, postar e fazer de live em cada dia. As entregas das publis e o prazo das amostras aparecem sozinhos.") + `
+        <div class="grade g21">
+          <div class="card"><div class="card-topo lu-cal-topo"><button class="btn sec pequeno" type="button" data-lu="mes" data-n="-1" aria-label="Mês anterior">‹</button><h2>${MESES[m - 1][0].toUpperCase() + MESES[m - 1].slice(1)} de ${a}</h2><button class="btn sec pequeno" type="button" data-lu="mes" data-n="1" aria-label="Próximo mês">›</button><span class="espaco"></span><button class="link" type="button" data-lu="hoje">hoje</button></div>
+            <div class="lu-cal">${DIAS.map((d) => `<div class="lu-cal-sem">${d}</div>`).join("")}
+              ${celulas.map((iso) => { if (!iso) return '<div class="lu-cal-dia vazio"></div>'; const it = doDia(iso); return `<button type="button" class="lu-cal-dia${iso === hoje() ? " hoje" : ""}${iso === L.dia ? " sel" : ""}" data-lu="dia" data-d="${iso}" aria-label="${dLongo(iso)}, ${it.length} item(ns)"><span class="lu-cal-n">${+iso.slice(8)}</span>${it.slice(0, 3).map((x) => `<span class="lu-chip t-${x.tipo}${x.feito ? " feito" : ""}">${esc(x.titulo)}</span>`).join("")}${it.length > 3 ? `<span class="lu-mais-itens">+${it.length - 3}</span>` : ""}</button>`; }).join("")}
+            </div>
+            <div class="lu-legenda">${["gravar", "editar", "postar", "live", "tiktok", "entrega", "amostra"].map((t) => `<span><i class="lu-ponto t-${t}"></i>${{ tiktok: "vídeo da aba Vídeos", entrega: "entrega de publi", amostra: "prazo de amostra" }[t] || TIPOS[t]}</span>`).join("")}</div>
+          </div>
+          <div class="card"><div class="card-topo"><h2>Próximos 7 dias</h2><span class="sub">o que falta fazer</span></div>
+            <ul class="lista-foco">${semana.map((x) => `<li><span class="nome"><i class="lu-ponto t-${x.tipo}"></i>${esc(x.titulo)}</span><span class="val">${P.dataBR(x.dia)}${x.hora ? " " + hora(x.hora) : ""}</span></li>`).join("") || '<li><span class="nome">Nada marcado para os próximos dias.</span></li>'}</ul></div>
+        </div>
+        <div class="grade g2">
+          <div class="card"><div class="card-topo"><h2>${dLongo(L.dia)}</h2><span class="sub">${itensDia.length} item(ns)</span></div>
+            <ul class="lista-foco">${itensDia.map((x) => x.origem === "agenda" ? `<li class="${x.feito ? "lu-feito" : ""}"><span class="nome"><label class="lu-check"><input type="checkbox" data-lu="feito" data-id="${x.id}"${x.feito ? " checked" : ""}> <i class="lu-ponto t-${x.tipo}"></i>${x.hora ? `<b>${hora(x.hora)}</b> ` : ""}${esc(x.titulo)}</label></span><span class="lu-acoes">${(x.roteiro_id && rotDe(x.roteiro_id)) || (x.referencia_id && refDe(x.referencia_id)) ? `<button class="link" type="button" data-lu="ver-item" data-id="${x.id}">roteiro</button>` : ""}<button class="link" type="button" data-lu="editar-cal" data-id="${x.id}">editar</button><button class="x" type="button" data-lu="apagar-cal" data-id="${x.id}" aria-label="Apagar">×</button></span><small>${TIPOS[x.tipo]} · ${PLATAFORMAS[x.plataforma]}${x.obs ? " · " + esc(x.obs) : ""}</small></li>`
+              : x.origem === "video" ? `<li class="${x.feito ? "lu-feito" : ""}"><span class="nome"><i class="lu-ponto t-tiktok"></i>${x.hora ? `<b>${hora(x.hora)}</b> ` : ""}${esc(x.titulo)}</span><span class="lu-acoes"><button class="chip lu-st" type="button" data-lu="status-video" data-id="${x.vid}" title="Mudar status">${STATUS_V[x.status] || x.status}</button></span><small>vem da aba Vídeos · toque no status para mudar (a gravar, agendado, postado)</small></li>`
+              : `<li><span class="nome"><i class="lu-ponto t-${x.tipo}"></i>${esc(x.titulo)}</span><small>vem de ${x.origem === "publi" ? "Publis" : "Amostras"}</small></li>`).join("") || '<li><span class="nome">Nada neste dia. Use o formulário ao lado.</span></li>'}</ul></div>
+          <div class="card"><div class="card-topo"><h2>${L.editCal ? "Editar item" : "Adicionar na agenda"}</h2>${L.editCal || L.prefill ? '<span class="espaco"></span><button class="link" type="button" data-lu="cancelar-cal">cancelar</button>' : ""}</div>
+            <form class="lu-form" id="luFormCal">
+              <div class="lu-grade lu-grade-2">
+                <div><label class="lbl" for="cTitulo">O quê *</label><input class="inp" id="cTitulo" required maxlength="160" value="${esc(c.titulo || pre.titulo || "")}" placeholder="Ex.: gravar 3 vídeos da creatina"></div>
+                <div><label class="lbl" for="cData">Dia *</label><input class="inp" id="cData" type="date" required value="${esc(c.data || L.dia)}"></div>
+                <div><label class="lbl" for="cHora">Hora</label><input class="inp" id="cHora" type="time" value="${esc(hora(c.hora))}"></div>
+                <div><label class="lbl" for="cTipo">Tipo</label><select class="inp" id="cTipo">${opcoes(TIPOS, c.tipo || pre.tipo || "postar")}</select></div>
+                <div><label class="lbl" for="cPlat">Onde</label><select class="inp" id="cPlat">${opcoes(PLATAFORMAS, c.plataforma || "tiktok")}</select></div>
+                <div><label class="lbl" for="cRot">Roteiro</label><select class="inp" id="cRot"><option value="">(nenhum)</option>${L.rot.length ? `<optgroup label="Biblioteca de roteiros">${L.rot.map((r) => `<option value="r:${r.id}"${(c.roteiro_id || pre.roteiro_id) === r.id ? " selected" : ""}>${esc(r.titulo)}</option>`).join("")}</optgroup>` : ""}${L.refs.length ? `<optgroup label="Copies da aba Criar">${L.refs.map((f) => `<option value="f:${esc(f.id)}"${String(c.referencia_id || pre.referencia_id || "") === String(f.id) ? " selected" : ""}>${esc(tituloRef(f).slice(0, 70))}</option>`).join("")}</optgroup>` : ""}</select></div>
+              </div>
+              <div><label class="lbl" for="cObs">Anotação</label><input class="inp" id="cObs" maxlength="1000" value="${esc(c.obs || "")}"></div>
+              <div class="controles"><button class="btn pequeno" type="submit">${L.editCal ? "Salvar" : "Adicionar"}</button></div>
+            </form></div>
+        </div>`;
+
+      el.querySelector("#luFormCal").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const d = { titulo: val(el, "cTitulo"), data: val(el, "cData"), hora: val(el, "cHora") || null, tipo: val(el, "cTipo"), plataforma: val(el, "cPlat"), roteiro_id: null, referencia_id: null, obs: val(el, "cObs") || null };
+        const qual = val(el, "cRot"); if (qual.startsWith("r:")) d.roteiro_id = +qual.slice(2); else if (qual.startsWith("f:")) d.referencia_id = qual.slice(2);
+        if (!d.titulo || !d.data) return;
+        try { trocar(L.cal, await salvar("calendario", d, L.editCal)); toast(L.editCal ? "Salvo." : "Adicionado na agenda."); L.editCal = null; L.prefill = null; L.dia = d.data; L.mes = d.data.slice(0, 7); telaCalendario(el); }
+        catch (er) { toast(amigavel(er), true); }
+      });
+      el.onchange = async (e) => {
+        const t = e.target.closest("[data-lu='feito']"); if (!t) return;
+        try { trocar(L.cal, await salvar("calendario", { feito: t.checked }, +t.dataset.id)); telaCalendario(el); } catch (er) { toast(amigavel(er), true); }
+      };
+      el.onclick = async (e) => {
+        const t = e.target.closest("[data-lu]"); if (!t || t.dataset.lu === "feito") return; const a = t.dataset.lu, id = +t.dataset.id;
+        if (a === "mes") { const [y, mm] = L.mes.split("-").map(Number), d = new Date(y, mm - 1 + +t.dataset.n, 1); L.mes = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; telaCalendario(el); }
+        else if (a === "hoje") { L.mes = hoje().slice(0, 7); L.dia = hoje(); telaCalendario(el); }
+        else if (a === "dia") { L.dia = t.dataset.d; telaCalendario(el); }
+        else if (a === "editar-cal") { L.editCal = id; const x = L.cal.find((y) => y.id === id); if (x) L.dia = x.data; telaCalendario(el); }
+        else if (a === "cancelar-cal") { L.editCal = null; L.prefill = null; telaCalendario(el); }
+        else if (a === "ver-item") { const x = L.cal.find((y) => y.id === id); if (x) abrirDoItem(x); }
+        else if (a === "status-video") {
+          const v = L.videos.find((y) => y.id === id); if (!v) return; const prox = { rascunho: "agendado", agendado: "postado", postado: "rascunho" }[v.status] || "rascunho";
+          try { ok(await sb().from("videos").update({ status: prox }).eq("id", id)); v.status = prox; telaCalendario(el); } catch (er) { toast(amigavel(er), true); }
+        }
+        else if (a === "apagar-cal") { const x = L.cal.find((y) => y.id === id); if (!x || !confirm(`Tirar "${x.titulo}" da agenda?`)) return; try { await apagar("calendario", id); L.cal = L.cal.filter((y) => y.id !== id); telaCalendario(el); } catch (er) { toast(amigavel(er), true); } }
+      };
+    }
+
+    /* ============ ROTEIROS ============ */
+    async function telaRoteiros(el) {
+      await carregar(!L.dentro); L.dentro = true;
+      if (L.erro) { el.innerHTML = cabeca("Roteiros", "A sua biblioteca de roteiros.") + `<div class="aviso">${esc(L.erro)}</div>`; return; }
+      const r = L.editRot ? rotDe(L.editRot) || {} : {};
+      const b = L.busca.toLowerCase();
+      const lista = L.rot.filter((x) => (!L.filtro || x.status === L.filtro) && (!b || `${x.titulo} ${x.produto || ""} ${x.texto || ""}`.toLowerCase().includes(b)));
+      const cont = (s) => L.rot.filter((x) => x.status === s).length;
+      const gancho = (t) => { const l = String(t || "").replace(/\*\*/g, "").split("\n").map((x) => x.trim()).find((x) => /^FALA\s*:/i.test(x)); return (l ? l.replace(/^FALA\s*:\s*/i, "") : String(t || "").trim().split("\n")[0] || "").slice(0, 170); };
+      el.innerHTML = cabeca("Roteiros", "A sua biblioteca de roteiros. Cole a resposta do Claude inteira: o botão Ver roteiro de gravação separa fala, cena e texto na tela, igual na aba Criar.") + `
+        <div class="card"><div class="card-topo"><h2>${L.editRot ? "Editar roteiro" : "Novo roteiro"}</h2>${L.editRot ? '<span class="espaco"></span><button class="link" type="button" data-lu="cancelar-rot">cancelar edição</button>' : ""}</div>
+          <form class="lu-form" id="luFormRot">
+            <div class="lu-grade">
+              <div><label class="lbl" for="rTitulo">Nome do roteiro *</label><input class="inp" id="rTitulo" required maxlength="160" value="${esc(r.titulo || "")}" placeholder="Ex.: creatina, gancho da areia"></div>
+              <div><label class="lbl" for="rProd">Produto</label><input class="inp" id="rProd" maxlength="200" value="${esc(r.produto || "")}"></div>
+              <div><label class="lbl" for="rFormato">Formato</label><select class="inp" id="rFormato"><option value="">(escolher)</option>${FORMATOS.map((f) => `<option${r.formato === f ? " selected" : ""}>${f}</option>`).join("")}</select></div>
+              <div><label class="lbl" for="rStatus">Situação</label><select class="inp" id="rStatus">${opcoes(STATUS_ROT, r.status || "ideia")}</select></div>
+            </div>
+            <div><label class="lbl" for="rTexto">Roteiro (cole aqui)</label><textarea class="inp" id="rTexto" rows="9" maxlength="20000" placeholder="CENA 1&#10;FALA: ...&#10;IMAGEM: ...&#10;TEXTO NA TELA: ...">${esc(r.texto || "")}</textarea></div>
+            <div><label class="lbl" for="rObs">Anotações</label><input class="inp" id="rObs" maxlength="2000" value="${esc(r.obs || "")}"></div>
+            <div class="controles"><button class="btn pequeno" type="submit">${L.editRot ? "Salvar roteiro" : "Guardar roteiro"}</button><button class="btn sec pequeno" type="button" data-lu="previa">Ver roteiro de gravação</button></div>
+          </form></div>
+        <div class="card"><div class="card-topo"><h2>Biblioteca</h2><span class="sub">${L.rot.length} roteiro(s)</span><span class="espaco"></span><input class="inp lu-busca" id="rBusca" type="search" placeholder="buscar" value="${esc(L.busca)}" aria-label="Buscar roteiro"></div>
+          <div class="chips" style="margin-bottom:12px"><button class="chip" type="button" data-lu="filtro" data-v="" aria-pressed="${!L.filtro}">Todos</button>${Object.entries(STATUS_ROT).map(([k, v]) => `<button class="chip" type="button" data-lu="filtro" data-v="${k}" aria-pressed="${L.filtro === k}">${v} (${cont(k)})</button>`).join("")}</div>
+          <div class="lu-rot-lista">${lista.map((x) => `<div class="lu-rot">
+              <div class="lu-rot-topo"><b>${esc(x.titulo)}</b><select class="inp" data-lu="status-rot" data-id="${x.id}" aria-label="Situação">${opcoes(STATUS_ROT, x.status)}</select></div>
+              <small class="lu-cinza">${[x.produto, x.formato, P.dataBR((x.criado_em || "").slice(0, 10))].filter(Boolean).map(esc).join(" · ")}</small>
+              ${x.texto ? `<p class="lu-rot-gancho">${esc(gancho(x.texto))}</p>` : '<p class="lu-rot-gancho lu-cinza">sem texto ainda</p>'}
+              <div class="controles">${x.texto ? `<button class="btn sec pequeno" type="button" data-lu="ver-rot" data-id="${x.id}">Ver roteiro de gravação</button>` : ""}<button class="link" type="button" data-lu="agendar" data-id="${x.id}">agendar gravação</button><button class="link" type="button" data-lu="editar-rot" data-id="${x.id}">editar</button><button class="x" type="button" data-lu="apagar-rot" data-id="${x.id}" aria-label="Apagar">×</button></div>
+            </div>`).join("") || '<p class="vazio">Nenhum roteiro aqui ainda.</p>'}</div></div>
+        <div class="card"><div class="card-topo"><h2>Copies da aba Criar</h2><span class="sub">${L.refs.length} copy(s) pronta(s) · continuam guardadas lá; aqui é para ver e agendar</span><span class="espaco"></span><button class="link" type="button" data-tela="criar">abrir Criar</button></div>
+          <div class="lu-rot-lista">${L.refs.filter((f) => !b || `${tituloRef(f)} ${f.copy}`.toLowerCase().includes(b)).map((f) => `<div class="lu-rot">
+              <div class="lu-rot-topo"><b>${esc(tituloRef(f))}</b>${L.cal.some((c) => String(c.referencia_id) === String(f.id)) ? '<span class="selo sobe">na agenda</span>' : ""}</div>
+              <small class="lu-cinza">${[f.autor, P.dataBR((f.criado_em || "").slice(0, 10))].filter(Boolean).map(esc).join(" · ")}</small>
+              <p class="lu-rot-gancho">${esc(gancho(f.copy))}</p>
+              <div class="controles"><button class="btn sec pequeno" type="button" data-lu="ver-ref" data-ref="${esc(f.id)}">Ver roteiro de gravação</button><button class="link" type="button" data-lu="agendar-ref" data-ref="${esc(f.id)}">agendar gravação</button></div>
+            </div>`).join("") || '<p class="vazio">Nenhuma copy pronta na aba Criar.</p>'}</div></div>`;
+
+      el.querySelector("#luFormRot").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const d = { titulo: val(el, "rTitulo"), produto: val(el, "rProd") || null, formato: val(el, "rFormato") || null, status: val(el, "rStatus"), texto: el.querySelector("#rTexto").value || null, obs: val(el, "rObs") || null };
+        if (!d.titulo) return;
+        try { trocar(L.rot, await salvar("roteiros", d, L.editRot)); toast(L.editRot ? "Roteiro salvo." : "Roteiro guardado."); L.editRot = null; telaRoteiros(el); }
+        catch (er) { toast(amigavel(er), true); }
+      });
+      const busca = el.querySelector("#rBusca");
+      busca.addEventListener("input", () => { L.busca = busca.value; clearTimeout(busca.t); busca.t = setTimeout(() => { telaRoteiros(el).then(() => { const b2 = el.querySelector("#rBusca"); if (b2) { b2.focus(); b2.setSelectionRange(b2.value.length, b2.value.length); } }); }, 250); });
+      el.onchange = async (e) => {
+        const t = e.target.closest("[data-lu='status-rot']"); if (!t) return;
+        try { trocar(L.rot, await salvar("roteiros", { status: t.value }, +t.dataset.id)); toast("Situação atualizada."); } catch (er) { toast(amigavel(er), true); }
+      };
+      el.onclick = async (e) => {
+        const t = e.target.closest("[data-lu]"); if (!t || t.tagName === "SELECT") return; const a = t.dataset.lu, id = +t.dataset.id;
+        if (a === "filtro") { L.filtro = t.dataset.v; telaRoteiros(el); }
+        else if (a === "previa") { const tx = el.querySelector("#rTexto").value; if (!tx.trim()) { toast("Cole o roteiro primeiro.", true); return; } P.abrirRoteiro(tx, val(el, "rProd") || val(el, "rTitulo")); }
+        else if (a === "ver-rot") { const x = rotDe(id); if (x) P.abrirRoteiro(x.texto || "", x.produto || x.titulo); }
+        else if (a === "editar-rot") { L.editRot = id; telaRoteiros(el); window.scrollTo(0, 0); }
+        else if (a === "cancelar-rot") { L.editRot = null; telaRoteiros(el); }
+        else if (a === "ver-ref") { const f = refDe(t.dataset.ref); if (f) P.abrirRoteiro(f.copy, tituloRef(f)); }
+        else if (a === "agendar-ref") { const f = refDe(t.dataset.ref); L.prefill = { referencia_id: t.dataset.ref, titulo: "Gravar: " + (f ? tituloRef(f).slice(0, 120) : "copy"), tipo: "gravar" }; L.editCal = null; irPara("calendario"); }
+        else if (a === "agendar") { const x = rotDe(id); L.prefill = { roteiro_id: id, titulo: "Gravar: " + (x ? x.titulo : ""), tipo: "gravar" }; L.editCal = null; irPara("calendario"); }
+        else if (a === "apagar-rot") { const x = rotDe(id); if (!x || !confirm(`Apagar o roteiro "${x.titulo}"? Não dá para desfazer.`)) return; try { await apagar("roteiros", id); L.rot = L.rot.filter((y) => y.id !== id); L.cal.forEach((c) => { if (c.roteiro_id === id) c.roteiro_id = null; }); toast("Roteiro apagado."); telaRoteiros(el); } catch (er) { toast(amigavel(er), true); } }
+      };
+    }
+
+    /* ---------- registra telas e menu ---------- */
+    // saiu para outra tela do menu: na volta, recarrega
+    document.addEventListener("click", (e) => { const b = e.target.closest("[data-tela]"); if (b && !["calendario", "roteiros"].includes(b.dataset.tela)) L.dentro = false; }, true);
+    Object.assign(P.DESENHOS, { calendario: telaCalendario, roteiros: telaRoteiros });
+    TELAS.forEach(([id, nome]) => { P.NOMES[id] = nome; });
+    const desenharMenu = () => {
+      const box = document.getElementById("menuExtra"); if (!box) return;
+      let g = box.querySelector('[data-grupo="conteudo"]'); if (!g) { g = document.createElement("div"); g.dataset.grupo = "conteudo"; box.appendChild(g); }
+      g.innerHTML = `<div class="menu-grupo">Conteúdo</div><nav class="menu-itens">${TELAS.map(([id, nome]) => `<button class="menu-item" type="button" data-tela="${id}" data-dica="${nome}"><svg class="i" viewBox="0 0 24 24">${ICONES[id]}</svg><span class="rotulo">${nome}</span></button>`).join("")}</nav>`;
+    };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", desenharMenu); else desenharMenu();
+  });
+})();

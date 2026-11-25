@@ -1,5 +1,5 @@
 -- =============================================================
--- MARCAS E PUBLIS (parte extra do painel da Lulu, 25/11/2026)
+-- PARTE EXTRA DO PAINEL DA LULU: marcas, publis, calendário e roteiros (25/11/2026)
 -- Cole este arquivo inteiro no Supabase: SQL Editor > New query > Run.
 -- Pode rodar de novo sem problema: não apaga nada.
 -- Igual ao banco do curso: cada linha tem user_id e só o dono vê e mexe nela.
@@ -61,5 +61,57 @@ end $$;
 grant select, insert, update, delete on public.marcas, public.publis to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 revoke all on public.marcas, public.publis from anon;
+
+notify pgrst, 'reload schema';
+
+-- =============================================================
+-- CONTEÚDO (25/11/2026): calendário e roteiros
+-- =============================================================
+
+-- 3. ROTEIROS: a sua biblioteca de roteiros (cola a copy do Claude aqui)
+create table if not exists public.roteiros (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  titulo     text not null check (char_length(titulo) between 1 and 160),
+  produto    text check (char_length(produto) <= 200),
+  formato    text check (char_length(formato) <= 40),
+  status     text not null default 'ideia' check (status in ('ideia', 'pronto', 'gravado', 'postado')),
+  texto      text check (char_length(texto) <= 20000),
+  obs        text check (char_length(obs) <= 2000),
+  criado_em  timestamptz not null default now()
+);
+create index if not exists roteiros_user on public.roteiros (user_id, criado_em desc);
+
+-- 4. CALENDÁRIO: o que gravar, postar, entregar ou fazer de live em cada dia
+create table if not exists public.calendario (
+  id          bigint generated always as identity primary key,
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  data        date not null,
+  hora        time,
+  titulo      text not null check (char_length(titulo) between 1 and 160),
+  tipo        text not null default 'postar' check (tipo in ('gravar', 'editar', 'postar', 'live', 'outro')),
+  plataforma  text not null default 'tiktok' check (plataforma in ('tiktok', 'instagram', 'ambos', 'outro')),
+  feito       boolean not null default false,
+  roteiro_id  bigint references public.roteiros (id) on delete set null,
+  obs         text check (char_length(obs) <= 1000),
+  criado_em   timestamptz not null default now()
+);
+create index if not exists calendario_user_data on public.calendario (user_id, data);
+-- Um item da agenda também pode apontar para uma copy da aba Criar (tabela referencias do curso)
+alter table public.calendario add column if not exists referencia_id text check (char_length(referencia_id) <= 40);
+
+do $$
+declare t text;
+begin
+  foreach t in array array['roteiros', 'calendario'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "so o dono" on public.%I', t);
+    execute format('create policy "so o dono" on public.%I for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
+  end loop;
+end $$;
+
+grant select, insert, update, delete on public.roteiros, public.calendario to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+revoke all on public.roteiros, public.calendario from anon;
 
 notify pgrst, 'reload schema';
