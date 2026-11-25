@@ -1,0 +1,65 @@
+-- =============================================================
+-- MARCAS E PUBLIS (parte extra do painel da Lulu, 25/11/2026)
+-- Cole este arquivo inteiro no Supabase: SQL Editor > New query > Run.
+-- Pode rodar de novo sem problema: não apaga nada.
+-- Igual ao banco do curso: cada linha tem user_id e só o dono vê e mexe nela.
+-- =============================================================
+
+-- 1. MARCAS: com quem você fala, fechou ou quer fechar
+create table if not exists public.marcas (
+  id            bigint generated always as identity primary key,
+  user_id       uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  nome          text not null check (char_length(nome) between 1 and 120),
+  status        text not null default 'prospeccao' check (status in ('prospeccao', 'conversando', 'parceira', 'pausada')),
+  contato       text check (char_length(contato) <= 120),
+  email         text check (char_length(email) <= 160),
+  whatsapp      text check (char_length(whatsapp) <= 30),
+  instagram     text check (char_length(instagram) <= 80),
+  razao_social  text check (char_length(razao_social) <= 200),
+  cnpj          text check (char_length(cnpj) <= 30),
+  representante text check (char_length(representante) <= 120),
+  endereco      text check (char_length(endereco) <= 300),
+  obs           text check (char_length(obs) <= 2000),
+  criado_em     timestamptz not null default now()
+);
+create index if not exists marcas_user on public.marcas (user_id, nome);
+
+-- 2. PUBLIS: cada trabalho pago (proposta, fechada, entregue, paga)
+create table if not exists public.publis (
+  id               bigint generated always as identity primary key,
+  user_id          uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  marca_id         bigint references public.marcas (id) on delete set null,
+  titulo           text not null check (char_length(titulo) between 1 and 160),
+  status           text not null default 'proposta' check (status in ('proposta', 'fechada', 'gravando', 'entregue', 'paga', 'cancelada')),
+  valor            numeric(12, 2) not null default 0 check (valor >= 0),
+  qtd_videos       integer not null default 1 check (qtd_videos between 0 and 100),
+  duracao_video    text check (char_length(duracao_video) <= 60),
+  qtd_fotos        integer not null default 0 check (qtd_fotos between 0 and 100),
+  entregaveis      text check (char_length(entregaveis) <= 2000),
+  entrega_em       date,
+  forma_pagamento  text check (char_length(forma_pagamento) <= 120),
+  prazo_pagamento  integer check (prazo_pagamento between 0 and 365),
+  licenca_meses    integer check (licenca_meses between 0 and 120),
+  vence_em         date,
+  pago_em          date,
+  obs              text check (char_length(obs) <= 2000),
+  criado_em        timestamptz not null default now()
+);
+create index if not exists publis_user on public.publis (user_id, status);
+
+-- Segurança igual em todas: só a dona vê e mexe no que é dela
+do $$
+declare t text;
+begin
+  foreach t in array array['marcas', 'publis'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "so o dono" on public.%I', t);
+    execute format('create policy "so o dono" on public.%I for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
+  end loop;
+end $$;
+
+grant select, insert, update, delete on public.marcas, public.publis to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+revoke all on public.marcas, public.publis from anon;
+
+notify pgrst, 'reload schema';

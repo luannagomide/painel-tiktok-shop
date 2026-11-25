@@ -16,6 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="lulu.css"><!-- [LULU-HOOK 4] -->
 </head>
 <body>
 
@@ -82,6 +83,8 @@
     <div class="seletor-conta" id="boxConta" hidden><label class="lbl" for="selConta">Perfil</label><select class="inp" id="selConta"></select></div>
     <div class="menu-grupo">TikTok</div>
     <nav class="menu-itens" id="menuItens"></nav>
+    <!-- [LULU-HOOK 4] menu extra da Lulu (lulu.js desenha os botões aqui) -->
+    <div id="menuExtra"></div>
     <div class="menu-rodape">
       <button class="menu-item" type="button" data-tela="perfil" data-dica="Meu perfil"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg><span class="rotulo">Meu perfil</span></button>
       <div class="quem-linha"><span class="avatar" id="avatar" aria-hidden="true"></span><div class="quem" id="quem"></div></div>
@@ -101,6 +104,7 @@
 
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="lulu.js"></script><!-- [LULU-HOOK 4] antes do app.js -->
 <script src="app.js"></script>
 </body>
 </html>

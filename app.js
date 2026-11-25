@@ -280,6 +280,7 @@
 
   function apiSupabase() {
     const sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
+    apiSupabase.sb = sb;   // [LULU-HOOK 1] as telas extras da Lulu (lulu.js) usam a mesma conexão
     let uid = null;
     const ok = ({ data, error }) => { if (error) throw error; return data; };
     const voltar = () => location.origin + location.pathname;
@@ -724,7 +725,7 @@
   function montarMenu() {
     const atrasadas = S.amostras.filter((a) => a.decisao === "testando" && a.prazo_postar && a.prazo_postar < hojeISO()).length;
     $("#menuItens").innerHTML = TELAS.map(([id, nome]) => `<button class="menu-item" type="button" data-tela="${id}" data-dica="${nome}"${S.tela === id ? ' aria-current="page"' : ""}><svg class="i" viewBox="0 0 24 24">${ICONES[id]}</svg><span class="rotulo">${nome}</span>${id === "amostras" && atrasadas ? `<span class="bolinha" title="amostras com prazo vencido">${atrasadas}</span>` : ""}</button>`).join("");
-    $$('.menu-rodape [data-tela]').forEach((b) => b.toggleAttribute("aria-current", S.tela === b.dataset.tela));
+    $$('.menu-rodape [data-tela], #menuExtra [data-tela]').forEach((b) => b.toggleAttribute("aria-current", S.tela === b.dataset.tela));   // [LULU-HOOK 3] inclui o menu extra
     $$(".assina").forEach((el) => { el.textContent = (S.perfil.nome || "").trim() || "Meu painel"; });
     const nomeQuem = (S.perfil.nome || "").trim() || (S.user && S.user.email) || "", arroba = (S.perfil.tiktok || "").trim();
     $("#quem").innerHTML = `<b>${esc(nomeQuem)}</b>${arroba ? `<span>${esc(arroba)}</span>` : ""}`;
@@ -1662,6 +1663,8 @@ REGRAS: entregue tudo agora, sem fazer perguntas antes: o que faltar fica [entre
   }
 
   const DESENHOS = { pedidos: telaPedidos, criar: telaCriar, hoje: telaHoje, resultados: telaResultados, produtos: telaProdutos, videos: telaVideos, amostras: telaAmostras, importar: telaImportar, perfil: telaPerfil };
+  // [LULU-HOOK 2] telas extras da Lulu (lulu.js): Marcas, Publis, Financeiro, Contrato
+  (window.PAINEL_EXTRAS || []).forEach((f) => { try { f({ DESENHOS, NOMES, ICONES, irPara, toast, traduz, esc, real, dataBR, hojeISO, somaDias, $, $$, S, sb: () => apiSupabase.sb || null, DEMO }); } catch (e) { console.error("extra", e); } });
 
   /* =============================================================
      CLIQUES (um ouvinte só para o painel)
