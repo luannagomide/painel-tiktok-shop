@@ -334,7 +334,7 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
               <div class="lu-link-linha"><a href="${esc(x.link)}" target="_blank" rel="noopener noreferrer" title="${esc(x.link)}">${esc(rotuloLink(x.link))}</a>
                 <select class="inp lu-etq" data-ref-campo="etiqueta" data-id="${x.id}" aria-label="O que ele tem de bom">${Object.entries(ETIQUETAS).map(([k, v]) => `<option value="${k}"${(x.etiqueta || "") === k ? " selected" : ""}>${v}</option>`).join("")}</select>
                 <button class="link" type="button" data-lu="transcrever-ref" data-id="${x.id}">${x.texto ? "transcrever de novo" : "Transcrever"}</button><button class="x" type="button" data-lu="apagar-ref" data-id="${x.id}" aria-label="Tirar">×</button></div>
-              <input class="inp lu-nota" data-ref-campo="nota" data-id="${x.id}" maxlength="1000" value="${esc(x.nota || "")}" placeholder="sua anotação: o que te chamou atenção nesse vídeo">
+              <textarea class="inp lu-nota" data-ref-campo="nota" data-id="${x.id}" maxlength="1000" rows="3" placeholder="sua anotação: o que te chamou atenção nesse vídeo">${esc(x.nota || "")}</textarea>
               <details><summary>${x.texto ? `texto do vídeo (${(x.texto.match(/\S+/g) || []).length} palavras)` : "sem texto ainda · cole aqui se preferir"}</summary><textarea class="inp" rows="4" data-ref-campo="texto" data-id="${x.id}" maxlength="8000">${esc(x.texto || "")}</textarea></details>
             </li>`).join("") || '<li class="vazio">Nenhum vídeo ainda. Cole os links aqui em cima.</li>'}</ul></div>
           <div class="lu-col">
@@ -363,6 +363,9 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
       const salvarPasta = async (d, msg) => { try { trocar(L.pastas, await salvar("pastas", d, pa.id)); if (msg) toast(msg); } catch (er) { toast(amigavel(er), true); } };
       const salvarRef = async (id, d) => { try { const x = await salvar("pasta_refs", d, id); const i = L.prefs.findIndex((y) => y.id === id); if (i >= 0) L.prefs[i] = x; } catch (er) { toast(amigavel(er), true); } };
       const salvarIdeias = async (l) => { await salvarPasta({ ideias: l }); telaPasta(el, pastaDe(pa.id)); };
+      // a caixa da anotação cresce com o texto, para ler tudo sem rolar
+      const ajusta = (ta) => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + 2 + "px"; };
+      el.querySelectorAll("textarea.lu-nota").forEach((ta) => { ajusta(ta); ta.addEventListener("input", () => ajusta(ta)); });
       el.querySelector("#luFormRotPasta").addEventListener("submit", async (e) => {
         e.preventDefault(); const pa2 = pastaDe(pa.id) || pa;
         const d = { titulo: val(el, "rpTitulo"), formato: val(el, "rpFormato") || null, status: val(el, "rpStatus"), texto: el.querySelector("#rpTexto").value || null };
