@@ -42,6 +42,7 @@
         // do painel do curso: a agenda da aba Vídeos e as copies prontas da aba Criar
         try { L.videos = ok(await sb().from("videos").select("*").order("data")); } catch (_) { L.videos = []; }
         try { L.refs = ok(await sb().from("referencias").select("*").order("criado_em", { ascending: false })).filter((r) => (r.copy || "").trim()); } catch (_) { L.refs = []; }
+        try { L.pastas = ok(await sb().from("pastas").select("*").order("criado_em", { ascending: false })); L.prefs = ok(await sb().from("pasta_refs").select("*").order("criado_em")); L.semPastas = false; } catch (_) { L.pastas = []; L.prefs = []; L.semPastas = true; }
         L.ok = true; L.erro = "";
       } catch (e) { L.erro = amigavel(e); }
     }
@@ -67,7 +68,7 @@
 ${blocos}
 
 PRODUTO DO MEU VÍDEO: ${r.produto || "[nome do produto]"}
-${r.formato ? `FORMATO: ${r.formato}\n` : ""}${r.titulo ? `IDEIA DO ROTEIRO: ${r.titulo}\n` : ""}${r.obs ? `O QUE EU SEI / OBSERVAÇÕES: ${r.obs}\n` : ""}
+${r.formato ? `FORMATO: ${r.formato}\n` : ""}${r.titulo ? `IDEIA DO ROTEIRO: ${r.titulo}\n` : ""}${r.obs ? `O QUE EU SEI / OBSERVAÇÕES: ${r.obs}\n` : ""}${r.extra ? r.extra + "\n" : ""}
 ENTREGUE, em português do Brasil, nesta ordem:
 MAPA DA REFERÊNCIA: as partes ${refs.length > 1 ? "que as referências têm em comum" : "do vídeo"} numeradas (gancho, problema, demonstração, prova, chamada pro carrinho), com os segundos de cada uma (palavras ÷ 3,25 = segundos).
 POR QUE PRENDE: 1 frase sobre o gancho.
@@ -168,14 +169,14 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
     async function telaRoteiros(el) {
       await carregar(!L.dentro); L.dentro = true;
       if (L.erro) { el.innerHTML = cabeca("Roteiros", "A sua biblioteca de roteiros.") + `<div class="aviso">${esc(L.erro)}</div>`; return; }
-      const r = L.editRot ? rotDe(L.editRot) || {} : {};
-      if (L.linksDe !== (L.editRot || 0)) { L.linksRasc = Array.isArray(r.links) ? [...r.links] : []; L.transRasc = { ...(r.transcricoes || {}) }; L.linksDe = L.editRot || 0; }
+      const r = L.editRot ? rotDe(L.editRot) || {} : (L.prefillRot || {});
+      if (L.linksDe !== (L.editRot || (L.prefillRot ? "p" + (L.prefillRot.pasta_id || "") : 0))) { L.linksRasc = Array.isArray(r.links) ? [...r.links] : []; L.transRasc = { ...(r.transcricoes || {}) }; L.linksDe = L.editRot || (L.prefillRot ? "p" + (L.prefillRot.pasta_id || "") : 0); }
       const b = L.busca.toLowerCase();
       const lista = L.rot.filter((x) => (!L.filtro || x.status === L.filtro) && (!b || `${x.titulo} ${x.produto || ""} ${x.texto || ""} ${(x.links || []).join(" ")}`.toLowerCase().includes(b)));
       const cont = (s) => L.rot.filter((x) => x.status === s).length;
       const gancho = (t) => { const l = String(t || "").replace(/\*\*/g, "").split("\n").map((x) => x.trim()).find((x) => /^FALA\s*:/i.test(x)); return (l ? l.replace(/^FALA\s*:\s*/i, "") : String(t || "").trim().split("\n")[0] || "").slice(0, 170); };
       el.innerHTML = cabeca("Roteiros", "A sua biblioteca de roteiros. Cole a resposta do Claude inteira: o botão Ver roteiro de gravação separa fala, cena e texto na tela, igual na aba Criar.") + `
-        <div class="card"><div class="card-topo"><h2>${L.editRot ? "Editar roteiro" : "Novo roteiro"}</h2>${L.editRot ? '<span class="espaco"></span><button class="link" type="button" data-lu="cancelar-rot">cancelar edição</button>' : ""}</div>
+        <div class="card"><div class="card-topo"><h2>${L.editRot ? "Editar roteiro" : L.prefillRot ? "Novo roteiro da pasta " + esc(L.prefillRot.nomePasta || "") : "Novo roteiro"}</h2>${L.editRot || L.prefillRot ? '<span class="espaco"></span><button class="link" type="button" data-lu="cancelar-rot">cancelar edição</button>' : ""}</div>
           <form class="lu-form" id="luFormRot">
             <div class="lu-grade">
               <div><label class="lbl" for="rTitulo">Nome do roteiro *</label><input class="inp" id="rTitulo" required maxlength="160" value="${esc(r.titulo || "")}" placeholder="Ex.: creatina, gancho da areia"></div>
@@ -211,9 +212,9 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
       el.querySelector("#luFormRot").addEventListener("submit", async (e) => {
         e.preventDefault();
         adicionarLinks();
-        const d = { titulo: val(el, "rTitulo"), produto: val(el, "rProd") || null, formato: val(el, "rFormato") || null, status: val(el, "rStatus"), texto: el.querySelector("#rTexto").value || null, obs: val(el, "rObs") || null, links: L.linksRasc.slice(0, 50), transcricoes: Object.fromEntries(L.linksRasc.slice(0, 50).filter((u) => (L.transRasc[u] || "").trim()).map((u) => [u, String(L.transRasc[u]).slice(0, 8000)])) };
+        const d = { titulo: val(el, "rTitulo"), produto: val(el, "rProd") || null, formato: val(el, "rFormato") || null, status: val(el, "rStatus"), texto: el.querySelector("#rTexto").value || null, obs: val(el, "rObs") || null, pasta_id: r.pasta_id || null, links: L.linksRasc.slice(0, 50), transcricoes: Object.fromEntries(L.linksRasc.slice(0, 50).filter((u) => (L.transRasc[u] || "").trim()).map((u) => [u, String(L.transRasc[u]).slice(0, 8000)])) };
         if (!d.titulo) return;
-        try { trocar(L.rot, await salvar("roteiros", d, L.editRot)); toast(L.editRot ? "Roteiro salvo." : "Roteiro guardado."); L.editRot = null; L.linksDe = null; telaRoteiros(el); }
+        try { trocar(L.rot, await salvar("roteiros", d, L.editRot)); toast(L.editRot ? "Roteiro salvo." : "Roteiro guardado."); L.editRot = null; L.prefillRot = null; L.linksDe = null; telaRoteiros(el); }
         catch (er) { toast(amigavel(er), true); }
       });
       function desenharLinks() {
@@ -261,7 +262,7 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
         else if (a === "previa") { const tx = el.querySelector("#rTexto").value; if (!tx.trim()) { toast("Cole o roteiro primeiro.", true); return; } P.abrirRoteiro(tx, val(el, "rProd") || val(el, "rTitulo")); }
         else if (a === "ver-rot") { const x = rotDe(id); if (x) P.abrirRoteiro(x.texto || "", x.produto || x.titulo); }
         else if (a === "editar-rot") { L.editRot = id; telaRoteiros(el); window.scrollTo(0, 0); }
-        else if (a === "cancelar-rot") { L.editRot = null; telaRoteiros(el); }
+        else if (a === "cancelar-rot") { L.editRot = null; L.prefillRot = null; L.linksDe = null; telaRoteiros(el); }
         else if (a === "ver-ref") { const f = refDe(t.dataset.ref); if (f) P.abrirRoteiro(f.copy, tituloRef(f)); }
         else if (a === "agendar-ref") { const f = refDe(t.dataset.ref); L.prefill = { referencia_id: t.dataset.ref, titulo: "Gravar: " + (f ? tituloRef(f).slice(0, 120) : "copy"), tipo: "gravar" }; L.editCal = null; irPara("calendario"); }
         else if (a === "agendar") { const x = rotDe(id); L.prefill = { roteiro_id: id, titulo: "Gravar: " + (x ? x.titulo : ""), tipo: "gravar" }; L.editCal = null; irPara("calendario"); }
@@ -269,10 +270,173 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
       };
     }
 
+    /* ============ REFERÊNCIAS (pastas por produto ou tema) ============ */
+    const STATUS_PASTA = { pesquisando: "Pesquisando", vou_gravar: "Vou gravar", gravado: "Gravado", pausado: "Pausado" };
+    const ETIQUETAS = { "": "o que ele tem de bom?", gancho: "Gancho", demonstracao: "Demonstração", prova: "Prova", cta: "CTA", formato: "Formato", outro: "Outro" };
+    const pastaDe = (id) => L.pastas.find((x) => x.id === id) || null;
+    const refsDa = (id) => L.prefs.filter((x) => x.pasta_id === id);
+    const roteirosDa = (pa) => L.rot.filter((r) => r.pasta_id === pa.id || (!r.pasta_id && pa.tipo === "produto" && r.produto && r.produto.trim().toLowerCase() === pa.nome.trim().toLowerCase()));
+    const novaIdeiaId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    // atalhos: amostras e produtos que vendem e ainda não têm pasta
+    function sugestoesPasta() {
+      const ja = new Set(L.pastas.map((x) => x.nome.trim().toLowerCase()));
+      const am = (P.S.amostras || []).filter((a) => a.decisao !== "pausar").map((a) => a.produto);
+      const vend = {}; (P.S.pedidos || []).filter((x) => x.dia >= P.somaDias(hoje(), -30)).forEach((x) => { vend[x.nome] = (vend[x.nome] || 0) + (x.c || 0); });
+      const top = Object.entries(vend).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([n]) => n);
+      return [...new Set([...am, ...top])].filter((n) => n && !ja.has(n.trim().toLowerCase())).slice(0, 10);
+    }
+    async function telaReferencias(el) {
+      await carregar(!L.dentro); L.dentro = true;
+      if (L.erro) { el.innerHTML = cabeca("Referências", "Pastas de pesquisa por produto ou tema.") + `<div class="aviso">${esc(L.erro)}</div>`; return; }
+      if (L.semPastas) { el.innerHTML = cabeca("Referências", "Pastas de pesquisa por produto ou tema.") + '<div class="aviso">Falta rodar o banco_lulu.sql atualizado no Supabase (SQL Editor > New query > cole > Run).</div>'; return; }
+      if (L.pastaAberta && pastaDe(L.pastaAberta)) return telaPasta(el, pastaDe(L.pastaAberta));
+      L.pastaAberta = null;
+      const sug = sugestoesPasta();
+      el.innerHTML = cabeca("Referências", "Uma pasta por produto (que você tem ou não) ou por tema, como \"maquiagem em geral\". Dentro: os vídeos de referência, o texto deles e as suas ideias.") + `
+        <div class="card"><div class="card-topo"><h2>Nova pasta</h2></div>
+          <form class="form-linha" id="luFormPasta">
+            <div><label class="lbl" for="pNome">Nome do produto ou tema *</label><input class="inp" id="pNome" required maxlength="160" placeholder="Ex.: sérum Lisinha, maquiagem em geral"></div>
+            <div class="curto" style="flex-basis:170px"><label class="lbl" for="pTipoP">É um</label><select class="inp" id="pTipoP"><option value="produto">Produto</option><option value="tema">Tema</option></select></div>
+            <button class="btn pequeno" type="submit">Criar pasta</button>
+          </form>
+          ${sug.length ? `<p class="lbl" style="margin:14px 0 6px">Atalho: suas amostras e produtos que vendem</p><div class="chips">${sug.map((n) => `<button class="chip" type="button" data-lu="sug-pasta" data-n="${esc(n)}">+ ${esc(n.length > 42 ? n.slice(0, 42) + "…" : n)}</button>`).join("")}</div>` : ""}</div>
+        <div class="lu-pastas">${L.pastas.map((pa) => { const nr = refsDa(pa.id).length, ni = (pa.ideias || []).filter((i) => !i.feito).length, nro = roteirosDa(pa).length; return `<button type="button" class="card lu-pasta" data-lu="abrir-pasta" data-id="${pa.id}">
+            <span class="lu-pasta-topo"><b>${esc(pa.nome)}</b><span class="selo">${pa.tipo === "tema" ? "tema" : "produto"}</span></span>
+            <span class="lu-cinza">${STATUS_PASTA[pa.status] || pa.status}</span>
+            <span class="lu-pasta-num"><span><b>${nr}</b> referência(s)</span><span><b>${ni}</b> ideia(s)</span><span><b>${nro}</b> roteiro(s)</span></span></button>`; }).join("") || '<p class="vazio">Nenhuma pasta ainda. Crie a primeira aqui em cima.</p>'}</div>`;
+      const criar = async (nome, tipo) => {
+        try { const pa = await salvar("pastas", { nome: nome.slice(0, 160), tipo }); L.pastas.unshift(pa); L.pastaAberta = pa.id; toast("Pasta criada."); telaReferencias(el); } catch (er) { toast(amigavel(er), true); }
+      };
+      el.querySelector("#luFormPasta").addEventListener("submit", (e) => { e.preventDefault(); const n = val(el, "pNome"); if (n) criar(n, val(el, "pTipoP")); });
+      el.onchange = null;
+      el.onclick = (e) => {
+        const t = e.target.closest("[data-lu]"); if (!t) return;
+        if (t.dataset.lu === "abrir-pasta") { L.pastaAberta = +t.dataset.id; L.rotPastaEdit = null; telaReferencias(el); window.scrollTo(0, 0); }
+        else if (t.dataset.lu === "sug-pasta") criar(t.dataset.n, "produto");
+      };
+    }
+    function telaPasta(el, pa) {
+      const refs = refsDa(pa.id), ideias = pa.ideias || [], rots = roteirosDa(pa);
+      const agenda = L.cal.filter((c) => c.roteiro_id && rots.some((r) => r.id === c.roteiro_id) && c.data >= hoje());
+      el.innerHTML = `<div class="cabeca"><div><button class="link" type="button" data-lu="voltar">‹ todas as pastas</button><h1>${esc(pa.nome)}</h1><p>${pa.tipo === "tema" ? "Tema" : "Produto"} · ${refs.length} referência(s) · ${ideias.filter((i) => !i.feito).length} ideia(s) em aberto</p></div>
+          <div class="controles"><button class="btn pequeno" type="button" data-lu="pedido-pasta">Copiar o pedido para o Claude</button><button class="btn sec pequeno" type="button" data-lu="roteiro-pasta">Criar roteiro</button></div></div>
+        <div class="card"><div class="lu-grade">
+          <div><label class="lbl" for="paNome">Nome</label><input class="inp" id="paNome" data-campo="nome" maxlength="160" value="${esc(pa.nome)}"></div>
+          <div><label class="lbl" for="paTipo">É um</label><select class="inp" id="paTipo" data-campo="tipo"><option value="produto"${pa.tipo === "produto" ? " selected" : ""}>Produto</option><option value="tema"${pa.tipo === "tema" ? " selected" : ""}>Tema</option></select></div>
+          <div><label class="lbl" for="paStatus">Situação</label><select class="inp" id="paStatus" data-campo="status">${opcoes(STATUS_PASTA, pa.status)}</select></div>
+          ${pa.tipo === "produto" ? `<div><label class="lbl" for="paLink">Link do produto no TikTok Shop</label><input class="inp" id="paLink" data-campo="link_produto" maxlength="400" value="${esc(pa.link_produto || "")}" placeholder="https://"></div>
+          <div><label class="lbl" for="paCom">Comissão (%)</label><input class="inp" id="paCom" data-campo="comissao" type="number" min="0" max="100" step="0.5" value="${pa.comissao ?? ""}"></div>` : ""}
+        </div>${pa.link_produto && /^https?:\/\//i.test(pa.link_produto) ? `<p class="frase"><a href="${esc(pa.link_produto)}" target="_blank" rel="noopener noreferrer">abrir o produto</a></p>` : ""}</div>
+        <div class="grade g2">
+          <div class="card"><div class="card-topo"><h2>Vídeos de referência</h2><span class="sub">${refs.length}</span></div>
+            <div class="lu-link-add"><textarea class="inp" id="paLinks" rows="2" placeholder="Cole um ou vários links, um por linha"></textarea><button class="btn sec pequeno" type="button" data-lu="add-ref">Adicionar</button></div>
+            <ul class="lu-refs">${refs.map((x) => `<li class="lu-ref">
+              <div class="lu-link-linha"><a href="${esc(x.link)}" target="_blank" rel="noopener noreferrer" title="${esc(x.link)}">${esc(rotuloLink(x.link))}</a>
+                <select class="inp lu-etq" data-ref-campo="etiqueta" data-id="${x.id}" aria-label="O que ele tem de bom">${Object.entries(ETIQUETAS).map(([k, v]) => `<option value="${k}"${(x.etiqueta || "") === k ? " selected" : ""}>${v}</option>`).join("")}</select>
+                <button class="link" type="button" data-lu="transcrever-ref" data-id="${x.id}">${x.texto ? "transcrever de novo" : "Transcrever"}</button><button class="x" type="button" data-lu="apagar-ref" data-id="${x.id}" aria-label="Tirar">×</button></div>
+              <input class="inp lu-nota" data-ref-campo="nota" data-id="${x.id}" maxlength="1000" value="${esc(x.nota || "")}" placeholder="sua anotação: o que te chamou atenção nesse vídeo">
+              <details><summary>${x.texto ? `texto do vídeo (${(x.texto.match(/\S+/g) || []).length} palavras)` : "sem texto ainda · cole aqui se preferir"}</summary><textarea class="inp" rows="4" data-ref-campo="texto" data-id="${x.id}" maxlength="8000">${esc(x.texto || "")}</textarea></details>
+            </li>`).join("") || '<li class="vazio">Nenhum vídeo ainda. Cole os links aqui em cima.</li>'}</ul></div>
+          <div class="lu-col">
+            <div class="card"><div class="card-topo"><h2>Minhas ideias</h2></div>
+              <form class="lu-link-add" id="luFormIdeia"><input class="inp" id="paIdeia" maxlength="300" placeholder="Uma ideia de gancho, ângulo ou cena"><button class="btn sec pequeno" type="submit">Anotar</button></form>
+              <ul class="lista-foco" style="margin-top:10px">${ideias.map((i) => `<li class="${i.feito ? "lu-feito" : ""}"><span class="nome"><label class="lu-check"><input type="checkbox" data-lu="ideia-feita" data-i="${esc(i.id)}"${i.feito ? " checked" : ""}> ${esc(i.texto)}</label></span><span class="lu-acoes"><button class="link" type="button" data-lu="ideia-roteiro" data-i="${esc(i.id)}">virar roteiro</button><button class="x" type="button" data-lu="ideia-apagar" data-i="${esc(i.id)}" aria-label="Apagar">×</button></span></li>`).join("") || '<li><span class="nome lu-cinza">Nenhuma ideia anotada.</span></li>'}</ul>
+              <label class="lbl" for="paNotas" style="margin-top:14px">Anotações livres</label><textarea class="inp" id="paNotas" data-campo="notas" rows="6" maxlength="10000" placeholder="Tudo o que você pensar sobre esse produto ou tema">${esc(pa.notas || "")}</textarea>
+              <p class="frase" style="margin-top:6px">Salva sozinho quando você sai do campo.</p></div>
+            <div class="card"><div class="card-topo"><h2>O que já saiu daqui</h2></div>
+              <ul class="lista-foco">${rots.map((r) => `<li><span class="nome">${esc(r.titulo)}</span><span class="selo">${STATUS_ROT[r.status] || r.status}</span><small>${r.texto ? `<button class="link" type="button" data-lu="ver-rot-pasta" data-id="${r.id}">ver roteiro de gravação</button> · ` : ""}<button class="link" type="button" data-lu="editar-rot-pasta" data-id="${r.id}">editar aqui</button></small></li>`).join("") || '<li><span class="nome lu-cinza">Nenhum roteiro ainda.</span></li>'}
+              ${agenda.map((c) => `<li><span class="nome"><i class="lu-ponto t-${c.tipo}"></i>${esc(c.titulo)}</span><span class="val">${P.dataBR(c.data)}</span></li>`).join("")}</ul>
+              <button class="link" type="button" data-lu="apagar-pasta" style="margin-top:12px">apagar esta pasta</button></div>
+          </div>
+        </div>
+        ${(() => { const er = L.rotPastaEdit ? rotDe(L.rotPastaEdit) : null; return `<div class="card" id="luEscrever"><div class="card-topo"><h2>${er ? "Editar roteiro" : "Escrever um roteiro aqui"}</h2><span class="sub">fica salvo também na aba Roteiros</span>${er ? '<span class="espaco"></span><button class="link" type="button" data-lu="cancelar-rot-pasta">cancelar edição</button>' : ""}</div>
+          <form class="lu-form" id="luFormRotPasta">
+            <div class="lu-grade">
+              <div><label class="lbl" for="rpTitulo">Nome do roteiro *</label><input class="inp" id="rpTitulo" required maxlength="160" value="${esc(er ? er.titulo : "")}" placeholder="Ex.: gancho da pele oleosa"></div>
+              <div><label class="lbl" for="rpFormato">Formato</label><select class="inp" id="rpFormato"><option value="">(escolher)</option>${FORMATOS.map((f) => `<option${er && er.formato === f ? " selected" : ""}>${f}</option>`).join("")}</select></div>
+              <div><label class="lbl" for="rpStatus">Situação</label><select class="inp" id="rpStatus">${opcoes(STATUS_ROT, er ? er.status : "pronto")}</select></div>
+            </div>
+            <div><label class="lbl" for="rpTexto">Roteiro (escreva ou cole a resposta do Claude)</label><textarea class="inp" id="rpTexto" rows="10" maxlength="20000" placeholder="CENA 1&#10;FALA: ...&#10;IMAGEM: ...&#10;TEXTO NA TELA: ...">${esc(er ? er.texto || "" : "")}</textarea></div>
+            <div class="controles"><button class="btn pequeno" type="submit">${er ? "Salvar roteiro" : "Guardar roteiro"}</button><button class="btn sec pequeno" type="button" data-lu="previa-pasta">Ver roteiro de gravação</button></div>
+          </form></div>`; })()}`;
+
+      const salvarPasta = async (d, msg) => { try { trocar(L.pastas, await salvar("pastas", d, pa.id)); if (msg) toast(msg); } catch (er) { toast(amigavel(er), true); } };
+      const salvarRef = async (id, d) => { try { const x = await salvar("pasta_refs", d, id); const i = L.prefs.findIndex((y) => y.id === id); if (i >= 0) L.prefs[i] = x; } catch (er) { toast(amigavel(er), true); } };
+      const salvarIdeias = async (l) => { await salvarPasta({ ideias: l }); telaPasta(el, pastaDe(pa.id)); };
+      el.querySelector("#luFormRotPasta").addEventListener("submit", async (e) => {
+        e.preventDefault(); const pa2 = pastaDe(pa.id) || pa;
+        const d = { titulo: val(el, "rpTitulo"), formato: val(el, "rpFormato") || null, status: val(el, "rpStatus"), texto: el.querySelector("#rpTexto").value || null };
+        if (!d.titulo) return;
+        if (!L.rotPastaEdit) {   // roteiro novo: leva a pasta, o produto e as referências junto
+          const rs = refsDa(pa2.id);
+          Object.assign(d, { pasta_id: pa2.id, produto: pa2.tipo === "produto" ? pa2.nome : null, links: rs.map((x) => x.link).slice(0, 50), transcricoes: Object.fromEntries(rs.filter((x) => x.texto).map((x) => [x.link, x.texto])) });
+        }
+        try { trocar(L.rot, await salvar("roteiros", d, L.rotPastaEdit)); toast(L.rotPastaEdit ? "Roteiro salvo." : "Roteiro guardado. Ele também está na aba Roteiros."); L.rotPastaEdit = null; telaPasta(el, pastaDe(pa.id) || pa2); }
+        catch (er) { toast(amigavel(er), true); }
+      });
+      el.querySelector("#luFormIdeia").addEventListener("submit", (e) => { e.preventDefault(); const tx = val(el, "paIdeia"); if (!tx) return; const atual = (pastaDe(pa.id) || pa).ideias || []; salvarIdeias([...atual, { id: novaIdeiaId(), texto: tx.slice(0, 300), feito: false }]); });
+      el.onchange = async (e) => {
+        pa = pastaDe(pa.id) || pa; const ideias = pa.ideias || [];
+        const c = e.target.closest("[data-campo]"), rc = e.target.closest("[data-ref-campo]"), id_ = e.target.closest("[data-lu='ideia-feita']");
+        if (c) {
+          let v = c.value.trim(); const k = c.dataset.campo;
+          if (k === "nome" && !v) { c.value = pa.nome; return; }
+          if (k === "comissao") v = v === "" ? null : Math.min(100, Math.max(0, +v));
+          await salvarPasta({ [k]: v === "" ? null : v }, "Salvo.");
+          if (k === "tipo" || k === "nome" || k === "status") telaPasta(el, pastaDe(pa.id));
+        } else if (rc) { await salvarRef(+rc.dataset.id, { [rc.dataset.refCampo]: rc.value.trim() || null }); toast("Salvo."); if (rc.dataset.refCampo === "texto") telaPasta(el, pastaDe(pa.id)); }
+        else if (id_) salvarIdeias(ideias.map((i) => (i.id === id_.dataset.i ? { ...i, feito: id_.checked } : i)));
+      };
+      el.onclick = async (e) => {
+        const t = e.target.closest("[data-lu]"); if (!t || t.tagName === "SELECT" || t.dataset.lu === "ideia-feita") return; const a = t.dataset.lu, id = +t.dataset.id;
+        pa = pastaDe(pa.id) || pa; const ideias = pa.ideias || [], refs = refsDa(pa.id);
+        if (a === "voltar") { L.pastaAberta = null; L.rotPastaEdit = null; telaReferencias(el); }
+        else if (a === "ver-rot-pasta") { const r = rotDe(id); if (r && r.texto) P.abrirRoteiro(r.texto, r.produto || r.titulo); }
+        else if (a === "editar-rot-pasta") { L.rotPastaEdit = id; telaPasta(el, pa); const c = el.querySelector("#luEscrever"); if (c) c.scrollIntoView({ behavior: "smooth", block: "start" }); }
+        else if (a === "cancelar-rot-pasta") { L.rotPastaEdit = null; telaPasta(el, pa); }
+        else if (a === "previa-pasta") { const tx = el.querySelector("#rpTexto").value; if (!tx.trim()) { toast("Escreva ou cole o roteiro primeiro.", true); return; } P.abrirRoteiro(tx, pa.tipo === "produto" ? pa.nome : val(el, "rpTitulo")); }
+        else if (a === "add-ref") {
+          const ta = el.querySelector("#paLinks"), ja = new Set(refs.map((x) => x.link)), novos = linksDoTexto(ta.value).filter((u) => !ja.has(u));
+          if (!novos.length) { toast("Não achei link novo nesse texto.", true); return; }
+          try { for (const u of novos) L.prefs.push(await salvar("pasta_refs", { pasta_id: pa.id, link: u })); toast(`${novos.length} vídeo(s) adicionado(s).`); telaPasta(el, pa); } catch (er) { toast(amigavel(er), true); }
+        }
+        else if (a === "apagar-ref") { const x = L.prefs.find((y) => y.id === id); if (!x || !confirm("Tirar esse vídeo da pasta?")) return; try { await apagar("pasta_refs", id); L.prefs = L.prefs.filter((y) => y.id !== id); telaPasta(el, pa); } catch (er) { toast(amigavel(er), true); } }
+        else if (a === "transcrever-ref") {
+          const x = L.prefs.find((y) => y.id === id); if (!x) return;
+          if (!P.transcrever) { toast("A transcrição não está ligada neste painel.", true); return; }
+          t.disabled = true; toast("Ouvindo o vídeo. Leva até 3 minutos, pode deixar a aba aberta.");
+          const res = await P.transcrever(x.link, (seg) => { const b2 = el.querySelector(`[data-lu="transcrever-ref"][data-id="${id}"]`); if (b2) b2.textContent = `Ouvindo... ${seg}s`; });
+          if (res && res.texto) { await salvarRef(id, { texto: String(res.texto).slice(0, 8000) }); toast("Texto chegou e foi salvo."); } else toast((res && res.erro) || "Não deu para transcrever.", true);
+          if (L.pastaAberta === pa.id && P.S.tela === "referencias") telaPasta(el, pastaDe(pa.id));
+        }
+        else if (a === "ideia-apagar") salvarIdeias(ideias.filter((i) => i.id !== t.dataset.i));
+        else if (a === "ideia-roteiro" || a === "roteiro-pasta") {
+          const ideia = a === "ideia-roteiro" ? ideias.find((i) => i.id === t.dataset.i) : null;
+          L.prefillRot = { pasta_id: pa.id, nomePasta: pa.nome, titulo: ideia ? ideia.texto.slice(0, 160) : pa.nome, produto: pa.tipo === "produto" ? pa.nome : "", links: refs.map((x) => x.link), transcricoes: Object.fromEntries(refs.filter((x) => x.texto).map((x) => [x.link, x.texto])), obs: ideia ? "" : (pa.notas || "").slice(0, 2000) };
+          L.editRot = null; L.linksDe = null; irPara("roteiros");
+        }
+        else if (a === "pedido-pasta") {
+          const comTexto = refs.filter((x) => (x.texto || "").trim());
+          if (!comTexto.length && !ideias.length && !(pa.notas || "").trim()) { toast("Transcreva um vídeo ou anote uma ideia antes.", true); return; }
+          const abertas = ideias.filter((i) => !i.feito).map((i) => "- " + i.texto).join("\n");
+          const notasRef = comTexto.filter((x) => x.nota || x.etiqueta).map((x) => `- ${rotuloLink(x.link)}: ${[ETIQUETAS[x.etiqueta || ""] && x.etiqueta ? "bom de " + ETIQUETAS[x.etiqueta].toLowerCase() : "", x.nota || ""].filter(Boolean).join(" · ")}`).join("\n");
+          const extra = [pa.tipo === "tema" ? `TEMA: ${pa.nome} (o produto eu escolho depois; deixe [produto] entre colchetes)` : "", notasRef ? `O QUE EU GOSTEI EM CADA REFERÊNCIA:\n${notasRef}` : "", abertas ? `MINHAS IDEIAS PARA ESSE ${pa.tipo === "tema" ? "TEMA" : "PRODUTO"} (use as que encaixarem):\n${abertas}` : "", (pa.notas || "").trim() ? `MINHAS ANOTAÇÕES:\n${pa.notas.trim()}` : ""].filter(Boolean).join("\n\n");
+          const refsP = comTexto.length ? comTexto.map((x) => ({ u: x.link, tx: x.texto })) : [{ u: "(sem vídeo transcrito)", tx: "[sem referência: use só as minhas ideias e anotações]" }];
+          const pedido = montarPedido({ produto: pa.tipo === "produto" ? pa.nome : "", titulo: "", formato: "", obs: "", extra }, refsP);
+          try { await navigator.clipboard.writeText(pedido); toast("Pedido copiado. Cole na conversa com o Claude."); }
+          catch (_) { const ta2 = document.createElement("textarea"); ta2.value = pedido; document.body.appendChild(ta2); ta2.select(); try { document.execCommand("copy"); toast("Pedido copiado. Cole na conversa com o Claude."); } catch (__) { toast("Não consegui copiar sozinho.", true); } ta2.remove(); }
+        }
+        else if (a === "apagar-pasta") { if (!confirm(`Apagar a pasta "${pa.nome}" com as referências e ideias dela? Os roteiros que saíram dela continuam.`)) return; try { await apagar("pastas", pa.id); L.pastas = L.pastas.filter((y) => y.id !== pa.id); L.prefs = L.prefs.filter((y) => y.pasta_id !== pa.id); L.pastaAberta = null; toast("Pasta apagada."); telaReferencias(el); } catch (er) { toast(amigavel(er), true); } }
+      };
+    }
+
     /* ---------- registra telas e menu ---------- */
     // saiu para outra tela do menu: na volta, recarrega
-    document.addEventListener("click", (e) => { const b = e.target.closest("[data-tela]"); if (b && !["calendario", "roteiros"].includes(b.dataset.tela)) L.dentro = false; }, true);
-    Object.assign(P.DESENHOS, { calendario: telaCalendario, roteiros: telaRoteiros });
+    document.addEventListener("click", (e) => { const b = e.target.closest("[data-tela]"); if (b && !["calendario", "roteiros", "referencias"].includes(b.dataset.tela)) L.dentro = false; }, true);
+    Object.assign(P.DESENHOS, { calendario: telaCalendario, roteiros: telaRoteiros, referencias: telaReferencias });
+    P.NOMES.referencias = "Referências";
+    P.ICONES.referencias = '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M10 11.5v4l3.5-2z"/>';
+    if (P.TELAS && !P.TELAS.some((t) => t[0] === "referencias")) { const i = P.TELAS.findIndex((t) => t[0] === "criar"); P.TELAS.splice(i >= 0 ? i + 1 : P.TELAS.length, 0, ["referencias", "Referências"]); }
     TELAS.forEach(([id, nome]) => { P.NOMES[id] = nome; });
     const desenharMenu = () => {
       const box = document.getElementById("menuExtra"); if (!box) return;

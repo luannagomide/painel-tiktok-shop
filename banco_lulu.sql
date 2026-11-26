@@ -150,3 +150,53 @@ notify pgrst, 'reload schema';
 -- 26/11/2026: o texto (transcrição) de cada link de referência, por endereço
 alter table public.roteiros add column if not exists transcricoes jsonb not null default '{}'::jsonb;
 notify pgrst, 'reload schema';
+
+-- =============================================================
+-- REFERÊNCIAS (26/11/2026): uma pasta por produto ou por tema, com vídeos de referência e ideias
+-- =============================================================
+
+-- 6. PASTAS: um produto (que eu tenho ou não) ou um tema ("maquiagem em geral")
+create table if not exists public.pastas (
+  id           bigint generated always as identity primary key,
+  user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  nome         text not null check (char_length(nome) between 1 and 160),
+  tipo         text not null default 'produto' check (tipo in ('produto', 'tema')),
+  status       text not null default 'pesquisando' check (status in ('pesquisando', 'vou_gravar', 'gravado', 'pausado')),
+  link_produto text check (char_length(link_produto) <= 400),
+  comissao     numeric(5, 2) check (comissao between 0 and 100),
+  notas        text check (char_length(notas) <= 10000),
+  ideias       jsonb not null default '[]'::jsonb,
+  criado_em    timestamptz not null default now()
+);
+create index if not exists pastas_user on public.pastas (user_id, criado_em desc);
+
+-- 7. VÍDEOS DE REFERÊNCIA de cada pasta (com o texto transcrito e a sua anotação)
+create table if not exists public.pasta_refs (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  pasta_id   bigint not null references public.pastas (id) on delete cascade,
+  link       text not null check (char_length(link) <= 400),
+  etiqueta   text check (etiqueta in ('gancho', 'demonstracao', 'prova', 'cta', 'formato', 'outro')),
+  nota       text check (char_length(nota) <= 1000),
+  texto      text check (char_length(texto) <= 8000),
+  criado_em  timestamptz not null default now()
+);
+create index if not exists pasta_refs_pasta on public.pasta_refs (user_id, pasta_id);
+
+-- o roteiro pode saber de qual pasta ele saiu
+alter table public.roteiros add column if not exists pasta_id bigint references public.pastas (id) on delete set null;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['pastas', 'pasta_refs'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "so o dono" on public.%I', t);
+    execute format('create policy "so o dono" on public.%I for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
+  end loop;
+end $$;
+grant select, insert, update, delete on public.pastas, public.pasta_refs to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+revoke all on public.pastas, public.pasta_refs from anon;
+
+notify pgrst, 'reload schema';
