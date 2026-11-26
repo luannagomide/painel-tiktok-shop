@@ -1664,7 +1664,7 @@ REGRAS: entregue tudo agora, sem fazer perguntas antes: o que faltar fica [entre
 
   const DESENHOS = { pedidos: telaPedidos, criar: telaCriar, hoje: telaHoje, resultados: telaResultados, produtos: telaProdutos, videos: telaVideos, amostras: telaAmostras, importar: telaImportar, perfil: telaPerfil };
   // [LULU-HOOK 2] telas extras da Lulu (lulu.js): Marcas, Publis, Financeiro, Contrato
-  (window.PAINEL_EXTRAS || []).forEach((f) => { try { f({ DESENHOS, NOMES, ICONES, irPara, toast, abrirRoteiro, somar, metaAtual, traduz, esc, real, dataBR, hojeISO, somaDias, $, $$, S, sb: () => apiSupabase.sb || null, DEMO }); } catch (e) { console.error("extra", e); } });
+  (window.PAINEL_EXTRAS || []).forEach((f) => { try { f({ DESENHOS, NOMES, ICONES, irPara, toast, abrirRoteiro, somar, metaAtual, transcrever: (u, cb) => API.transcrever ? API.transcrever(u, cb) : null, traduz, esc, real, dataBR, hojeISO, somaDias, $, $$, S, sb: () => apiSupabase.sb || null, DEMO }); } catch (e) { console.error("extra", e); } });
 
   /* =============================================================
      CLIQUES (um ouvinte só para o painel)

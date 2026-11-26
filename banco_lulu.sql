@@ -142,3 +142,11 @@ grant usage, select on all sequences in schema public to authenticated;
 revoke all on public.ganhos from anon;
 
 notify pgrst, 'reload schema';
+
+-- 26/11/2026: vários links de referência em cada roteiro (lista de endereços)
+alter table public.roteiros add column if not exists links jsonb not null default '[]'::jsonb;
+notify pgrst, 'reload schema';
+
+-- 26/11/2026: o texto (transcrição) de cada link de referência, por endereço
+alter table public.roteiros add column if not exists transcricoes jsonb not null default '{}'::jsonb;
+notify pgrst, 'reload schema';

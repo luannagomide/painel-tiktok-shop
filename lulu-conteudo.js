@@ -29,7 +29,7 @@
     const ok = ({ data, error }) => { if (error) throw error; return data; };
     const amigavel = (e) => {
       const t = String((e && (e.message || e.details)) || e || "");
-      if (/relation .*(roteiros|calendario).* does not exist|could not find the table|schema cache/i.test(t)) return "Falta rodar o banco_lulu.sql (a versão com calendário e roteiros) no Supabase: SQL Editor > New query > cole > Run.";
+      if (/relation .*(roteiros|calendario).* does not exist|could not find the table|schema cache|column .*(links|transcricoes)/i.test(t)) return "Falta rodar o banco_lulu.sql (a versão com calendário e roteiros) no Supabase: SQL Editor > New query > cole > Run.";
       return P.traduz ? P.traduz(e) : t;
     };
     async function carregar(forcar) {
@@ -58,6 +58,32 @@
     // abre o roteiro de gravação de um item: da biblioteca (roteiro_id) ou da aba Criar (referencia_id)
     const abrirDoItem = (x) => { const r = x.roteiro_id && rotDe(x.roteiro_id), f = x.referencia_id && refDe(x.referencia_id); if (r && r.texto) P.abrirRoteiro(r.texto, r.produto || r.titulo); else if (f) P.abrirRoteiro(f.copy, tituloRef(f)); else toast("Esse roteiro não tem texto.", true); };
     const hora = (h) => (h ? h.slice(0, 5) : "");
+    // Pedido para o Claude: modelar um roteiro parecido com as referências deste roteiro.
+    // A saída usa o mesmo formato da aba Criar (CENA / FALA / IMAGEM / TEXTO NA TELA), que o Ver roteiro de gravação lê.
+    function montarPedido(r, refs) {
+      const blocos = refs.map((x, i) => `REFERÊNCIA ${i + 1} (${rotuloLink(x.u)} · ${x.u}):\n"""\n${x.tx}\n"""`).join("\n\n");
+      return `Use a skill roteiro-tiktok-shop. Quero um roteiro de TikTok Shop parecido com ${refs.length > 1 ? "estes vídeos de referência" : "este vídeo de referência"}: mantenha a estrutura, a ordem e o ritmo, mas sem copiar frases.
+
+${blocos}
+
+PRODUTO DO MEU VÍDEO: ${r.produto || "[nome do produto]"}
+${r.formato ? `FORMATO: ${r.formato}\n` : ""}${r.titulo ? `IDEIA DO ROTEIRO: ${r.titulo}\n` : ""}${r.obs ? `O QUE EU SEI / OBSERVAÇÕES: ${r.obs}\n` : ""}
+ENTREGUE, em português do Brasil, nesta ordem:
+MAPA DA REFERÊNCIA: as partes ${refs.length > 1 ? "que as referências têm em comum" : "do vídeo"} numeradas (gancho, problema, demonstração, prova, chamada pro carrinho), com os segundos de cada uma (palavras ÷ 3,25 = segundos).
+POR QUE PRENDE: 1 frase sobre o gancho.
+ROTEIRO NOVO: pronto para gravar, dividido em cenas. Use EXATAMENTE este formato, sem comentários entre as cenas:
+CENA 1
+FALA: o que eu falo, do jeito que eu falo
+IMAGEM: o que aparece na tela (enquadramento, produto, demonstração)
+TEXTO NA TELA: só se tiver (na cena 1, a headline do gancho)
+3 GANCHOS ALTERNATIVOS: um por linha.
+
+REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não invente preço, desconto nem característica do produto. Nada de promessa de cura, resultado garantido ou urgência que a loja não deu. Sem emoji e sem travessão.`;
+    }
+    // pega todos os endereços de um texto colado (só http/https, sem repetir)
+    const linksDoTexto = (txt) => [...new Set(String(txt).split(/[\s,;]+/).map((x) => x.trim().replace(/[)\].,]+$/, "")).filter(Boolean).map((x) => (/^www\./i.test(x) ? "https://" + x : x)).filter((x) => /^https?:\/\/[^\s]+\.[^\s]+/i.test(x)))];
+    // "tiktok · @athaisfavero" em vez do endereço inteiro
+    const rotuloLink = (u) => { try { const x = new URL(u), h = x.hostname.replace(/^www\.|^m\.|^vm\./, ""), arroba = (x.pathname.match(/@[\w.]+/) || [""])[0], base = h.split(".")[0]; return arroba ? `${base} · ${arroba}` : (h + x.pathname).replace(/\/$/, "").slice(0, 40); } catch (_) { return u.slice(0, 40); } };
 
     /* ============ CALENDÁRIO ============ */
     // tudo que cai num dia: itens da agenda + (só para ver) entregas de publi e prazo de amostra
@@ -143,8 +169,9 @@
       await carregar(!L.dentro); L.dentro = true;
       if (L.erro) { el.innerHTML = cabeca("Roteiros", "A sua biblioteca de roteiros.") + `<div class="aviso">${esc(L.erro)}</div>`; return; }
       const r = L.editRot ? rotDe(L.editRot) || {} : {};
+      if (L.linksDe !== (L.editRot || 0)) { L.linksRasc = Array.isArray(r.links) ? [...r.links] : []; L.transRasc = { ...(r.transcricoes || {}) }; L.linksDe = L.editRot || 0; }
       const b = L.busca.toLowerCase();
-      const lista = L.rot.filter((x) => (!L.filtro || x.status === L.filtro) && (!b || `${x.titulo} ${x.produto || ""} ${x.texto || ""}`.toLowerCase().includes(b)));
+      const lista = L.rot.filter((x) => (!L.filtro || x.status === L.filtro) && (!b || `${x.titulo} ${x.produto || ""} ${x.texto || ""} ${(x.links || []).join(" ")}`.toLowerCase().includes(b)));
       const cont = (s) => L.rot.filter((x) => x.status === s).length;
       const gancho = (t) => { const l = String(t || "").replace(/\*\*/g, "").split("\n").map((x) => x.trim()).find((x) => /^FALA\s*:/i.test(x)); return (l ? l.replace(/^FALA\s*:\s*/i, "") : String(t || "").trim().split("\n")[0] || "").slice(0, 170); };
       el.innerHTML = cabeca("Roteiros", "A sua biblioteca de roteiros. Cole a resposta do Claude inteira: o botão Ver roteiro de gravação separa fala, cena e texto na tela, igual na aba Criar.") + `
@@ -157,8 +184,12 @@
               <div><label class="lbl" for="rStatus">Situação</label><select class="inp" id="rStatus">${opcoes(STATUS_ROT, r.status || "ideia")}</select></div>
             </div>
             <div><label class="lbl" for="rTexto">Roteiro (cole aqui)</label><textarea class="inp" id="rTexto" rows="9" maxlength="20000" placeholder="CENA 1&#10;FALA: ...&#10;IMAGEM: ...&#10;TEXTO NA TELA: ...">${esc(r.texto || "")}</textarea></div>
+            <div><label class="lbl" for="rLink">Links de referência</label>
+              <div class="lu-link-add"><textarea class="inp" id="rLink" rows="2" placeholder="Cole um ou vários links (TikTok, Instagram, YouTube…), um por linha"></textarea><button class="btn sec pequeno" type="button" data-lu="add-link">Adicionar</button></div>
+              <ul class="lu-links" id="rLinks"></ul></div>
             <div><label class="lbl" for="rObs">Anotações</label><input class="inp" id="rObs" maxlength="2000" value="${esc(r.obs || "")}"></div>
-            <div class="controles"><button class="btn pequeno" type="submit">${L.editRot ? "Salvar roteiro" : "Guardar roteiro"}</button><button class="btn sec pequeno" type="button" data-lu="previa">Ver roteiro de gravação</button></div>
+            <div class="controles"><button class="btn pequeno" type="submit">${L.editRot ? "Salvar roteiro" : "Guardar roteiro"}</button><button class="btn sec pequeno" type="button" data-lu="previa">Ver roteiro de gravação</button><button class="btn sec pequeno" type="button" data-lu="copiar-pedido">Copiar o pedido para o Claude</button></div>
+            <p class="frase" style="margin-top:0">Para um roteiro parecido com as referências: transcreva os links, clique em <b>Copiar o pedido para o Claude</b>, cole na conversa com o Claude e traga a resposta para a caixa <b>Roteiro</b>.</p>
           </form></div>
         <div class="card"><div class="card-topo"><h2>Biblioteca</h2><span class="sub">${L.rot.length} roteiro(s)</span><span class="espaco"></span><input class="inp lu-busca" id="rBusca" type="search" placeholder="buscar" value="${esc(L.busca)}" aria-label="Buscar roteiro"></div>
           <div class="chips" style="margin-bottom:12px"><button class="chip" type="button" data-lu="filtro" data-v="" aria-pressed="${!L.filtro}">Todos</button>${Object.entries(STATUS_ROT).map(([k, v]) => `<button class="chip" type="button" data-lu="filtro" data-v="${k}" aria-pressed="${L.filtro === k}">${v} (${cont(k)})</button>`).join("")}</div>
@@ -166,6 +197,7 @@
               <div class="lu-rot-topo"><b>${esc(x.titulo)}</b><select class="inp" data-lu="status-rot" data-id="${x.id}" aria-label="Situação">${opcoes(STATUS_ROT, x.status)}</select></div>
               <small class="lu-cinza">${[x.produto, x.formato, P.dataBR((x.criado_em || "").slice(0, 10))].filter(Boolean).map(esc).join(" · ")}</small>
               ${x.texto ? `<p class="lu-rot-gancho">${esc(gancho(x.texto))}</p>` : '<p class="lu-rot-gancho lu-cinza">sem texto ainda</p>'}
+              ${(x.links || []).length ? `<div class="lu-rot-links"><span class="lu-cinza">${x.links.length} referência(s):</span> ${x.links.slice(0, 4).map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(rotuloLink(u))}</a>`).join("")}${x.links.length > 4 ? `<span class="lu-cinza">+${x.links.length - 4}</span>` : ""}</div>` : ""}
               <div class="controles">${x.texto ? `<button class="btn sec pequeno" type="button" data-lu="ver-rot" data-id="${x.id}">Ver roteiro de gravação</button>` : ""}<button class="link" type="button" data-lu="agendar" data-id="${x.id}">agendar gravação</button><button class="link" type="button" data-lu="editar-rot" data-id="${x.id}">editar</button><button class="x" type="button" data-lu="apagar-rot" data-id="${x.id}" aria-label="Apagar">×</button></div>
             </div>`).join("") || '<p class="vazio">Nenhum roteiro aqui ainda.</p>'}</div></div>
         <div class="card"><div class="card-topo"><h2>Copies da aba Criar</h2><span class="sub">${L.refs.length} copy(s) pronta(s) · continuam guardadas lá; aqui é para ver e agendar</span><span class="espaco"></span><button class="link" type="button" data-tela="criar">abrir Criar</button></div>
@@ -178,11 +210,27 @@
 
       el.querySelector("#luFormRot").addEventListener("submit", async (e) => {
         e.preventDefault();
-        const d = { titulo: val(el, "rTitulo"), produto: val(el, "rProd") || null, formato: val(el, "rFormato") || null, status: val(el, "rStatus"), texto: el.querySelector("#rTexto").value || null, obs: val(el, "rObs") || null };
+        adicionarLinks();
+        const d = { titulo: val(el, "rTitulo"), produto: val(el, "rProd") || null, formato: val(el, "rFormato") || null, status: val(el, "rStatus"), texto: el.querySelector("#rTexto").value || null, obs: val(el, "rObs") || null, links: L.linksRasc.slice(0, 50), transcricoes: Object.fromEntries(L.linksRasc.slice(0, 50).filter((u) => (L.transRasc[u] || "").trim()).map((u) => [u, String(L.transRasc[u]).slice(0, 8000)])) };
         if (!d.titulo) return;
-        try { trocar(L.rot, await salvar("roteiros", d, L.editRot)); toast(L.editRot ? "Roteiro salvo." : "Roteiro guardado."); L.editRot = null; telaRoteiros(el); }
+        try { trocar(L.rot, await salvar("roteiros", d, L.editRot)); toast(L.editRot ? "Roteiro salvo." : "Roteiro guardado."); L.editRot = null; L.linksDe = null; telaRoteiros(el); }
         catch (er) { toast(amigavel(er), true); }
       });
+      function desenharLinks() {
+        const ul = el.querySelector("#rLinks"); if (!ul) return;
+        ul.innerHTML = L.linksRasc.map((u, i) => { const tx = L.transRasc[u] || ""; return `<li class="lu-link-item"><div class="lu-link-linha"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">${esc(rotuloLink(u))}</a>
+          <button class="link" type="button" data-lu="transcrever" data-i="${i}">${tx ? "transcrever de novo" : "Transcrever"}</button><button class="x" type="button" data-lu="tira-link" data-i="${i}" aria-label="Tirar este link">×</button></div>
+          <details${tx ? "" : ""}><summary>${tx ? `texto do vídeo (${(tx.match(/\S+/g) || []).length} palavras)` : "sem texto ainda · cole aqui se preferir"}</summary><textarea class="inp" rows="4" data-lu-texto="${i}" placeholder="O que a pessoa fala no vídeo">${esc(tx)}</textarea></details></li>`; }).join("");
+        ul.querySelectorAll("[data-lu-texto]").forEach((ta) => ta.addEventListener("input", () => { const u = L.linksRasc[+ta.dataset.luTexto]; if (u) L.transRasc[u] = ta.value; }));
+      }
+      function adicionarLinks() {
+        const ta = el.querySelector("#rLink"); if (!ta || !ta.value.trim()) return 0;
+        const novos = linksDoTexto(ta.value).filter((u) => !L.linksRasc.includes(u));
+        L.linksRasc.push(...novos); ta.value = ""; desenharLinks();
+        return novos.length;
+      }
+      desenharLinks();
+      el.querySelector("#rLink").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!adicionarLinks()) toast("Não achei link nesse texto.", true); } });
       const busca = el.querySelector("#rBusca");
       busca.addEventListener("input", () => { L.busca = busca.value; clearTimeout(busca.t); busca.t = setTimeout(() => { telaRoteiros(el).then(() => { const b2 = el.querySelector("#rBusca"); if (b2) { b2.focus(); b2.setSelectionRange(b2.value.length, b2.value.length); } }); }, 250); });
       el.onchange = async (e) => {
@@ -192,6 +240,24 @@
       el.onclick = async (e) => {
         const t = e.target.closest("[data-lu]"); if (!t || t.tagName === "SELECT") return; const a = t.dataset.lu, id = +t.dataset.id;
         if (a === "filtro") { L.filtro = t.dataset.v; telaRoteiros(el); }
+        else if (a === "add-link") { const q = adicionarLinks(); toast(q ? `${q} link(s) adicionado(s).` : "Não achei link novo nesse texto.", !q); }
+        else if (a === "tira-link") { const u = L.linksRasc[+t.dataset.i]; L.linksRasc.splice(+t.dataset.i, 1); if (u) delete L.transRasc[u]; desenharLinks(); }
+        else if (a === "transcrever") {
+          const u = L.linksRasc[+t.dataset.i]; if (!u) return;
+          if (!P.transcrever) { toast("A transcrição não está ligada neste painel.", true); return; }
+          t.disabled = true; toast("Ouvindo o vídeo. Leva até 3 minutos, pode deixar a aba aberta.");
+          const res = await P.transcrever(u, (seg) => { const b2 = el.querySelector(`[data-lu="transcrever"][data-i="${t.dataset.i}"]`); if (b2) b2.textContent = `Ouvindo... ${seg}s`; });
+          if (res && res.texto) { L.transRasc[u] = res.texto; desenharLinks(); toast("Texto chegou. Lembre de salvar o roteiro."); }
+          else { t.disabled = false; desenharLinks(); toast((res && res.erro) || "Não deu para transcrever.", true); }
+        }
+        else if (a === "copiar-pedido") {
+          adicionarLinks();
+          const refs = L.linksRasc.map((u) => ({ u, tx: (L.transRasc[u] || "").trim() })).filter((x) => x.tx);
+          if (!refs.length) { toast("Transcreva pelo menos um link (ou cole o texto dele) antes.", true); return; }
+          const pedido = montarPedido({ titulo: val(el, "rTitulo"), produto: val(el, "rProd"), formato: val(el, "rFormato"), obs: val(el, "rObs") }, refs);
+          try { await navigator.clipboard.writeText(pedido); toast("Pedido copiado. Cole na conversa com o Claude."); }
+          catch (_) { const ta2 = document.createElement("textarea"); ta2.value = pedido; document.body.appendChild(ta2); ta2.select(); try { document.execCommand("copy"); toast("Pedido copiado. Cole na conversa com o Claude."); } catch (__) { toast("Não consegui copiar sozinho.", true); } ta2.remove(); }
+        }
         else if (a === "previa") { const tx = el.querySelector("#rTexto").value; if (!tx.trim()) { toast("Cole o roteiro primeiro.", true); return; } P.abrirRoteiro(tx, val(el, "rProd") || val(el, "rTitulo")); }
         else if (a === "ver-rot") { const x = rotDe(id); if (x) P.abrirRoteiro(x.texto || "", x.produto || x.titulo); }
         else if (a === "editar-rot") { L.editRot = id; telaRoteiros(el); window.scrollTo(0, 0); }
