@@ -81,6 +81,8 @@ ${(pa.notas || "").trim() ? `\nMINHAS ANOTAÇÕES SOBRE ESSE ${qual}:\n${pa.nota
 ENTREGUE, em português do Brasil, ${total} blocos seguidos, numerados de 1 a ${total}${nRef ? `: primeiro os ${nRef} das referências, na ordem` : ""}${nId ? `${nRef ? ", depois" : ":"} os ${nId} das ideias, na ordem` : ""}. Cada bloco EXATAMENTE neste formato, sem comentários entre as cenas:
 
 ROTEIRO 1: um nome curto para o roteiro · ${nRef ? "referência 1" : "ideia 1"}
+REFERÊNCIA: o link do vídeo desse roteiro, copiado exatamente como eu mandei (nos roteiros de ideia, escreva: REFERÊNCIA: nenhuma)
+MINHA ANOTAÇÃO: a minha anotação desse vídeo, copiada exatamente como eu escrevi (se eu não anotei nada, pule esta linha)
 ESTRUTURA DA REFERÊNCIA: as partes (gancho, problema, demonstração, prova, chamada pro carrinho) com os segundos de cada uma (palavras ÷ 3,25 = segundos). Nos roteiros de ideia, escreva a estrutura que você escolheu.
 POR QUE PRENDE: 1 frase sobre o gancho.
 CENA 1

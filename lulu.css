@@ -135,3 +135,7 @@
 .lu-ref summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .lu-ref textarea { margin-top: 6px; font: inherit; font-size: 13px; resize: vertical; }
 @media (max-width: 520px) { .lu-ref .lu-link-linha { flex-wrap: wrap; } }
+
+/* referência clicável na tela de gravação (27/11) */
+.r-ref { margin-top: 4px !important; }
+.r-ref a { color: inherit; text-decoration: underline; text-underline-offset: 2px; font-weight: 600; }

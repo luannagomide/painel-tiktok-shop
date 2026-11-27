@@ -1538,8 +1538,26 @@ REGRAS: entregue tudo agora, sem fazer perguntas antes: o que faltar fica [entre
   }
   function separarRoteiros(txt) {
     const blocos = dividirCopias(txt);
-    if (blocos.length < 2) return separarRoteirosDoCurso(txt);
-    return blocos.flatMap((b) => separarRoteirosDoCurso(b));
+    const lista = blocos.length < 2 ? separarRoteirosDoCurso(txt) : blocos.flatMap((b) => separarRoteirosDoCurso(b));
+    // [Lulu, 27/11] cada roteiro pode trazer "REFERÊNCIA: <link>" e "MINHA ANOTAÇÃO: ..." logo abaixo do título
+    const refs = refsDosBlocos(txt);
+    if (refs.length === lista.length) lista.forEach((r, i) => { if (refs[i]) r.ref = refs[i]; });
+    else if (lista.length === 1 && refs.some(Boolean)) lista[0].ref = refs.find(Boolean);
+    return lista;
+  }
+  function refsDosBlocos(txt) {
+    const linhas = String(txt || "").replace(/\r/g, "").split("\n").map((l) => l.replace(/\*\*|__/g, "").replace(/^#+\s*/, "").trim());
+    const cab = (l) => /^(?:ROTEIRO|VERS[AÃ]O|OP[CÇ][AÃ]O|COPY)(?:\s+NOVO)?\s*(?:N[ºo°.]\s*)?(\d{1,2}|[A-E])(?![\wÀ-ú])/i.test(l);
+    const ini = linhas.map((l, k) => (cab(l) ? k : -1)).filter((k) => k >= 0);
+    const fatias = ini.length >= 2 ? ini.map((k, n) => linhas.slice(k, n + 1 < ini.length ? ini[n + 1] : linhas.length)) : [linhas];
+    return fatias.map((ls) => {
+      let link = "", nota = "";
+      ls.forEach((l) => {
+        const m = l.match(/^REFER[ÊE]NCIA\s*:\s*(.*)$/i); if (m && !link) { const u = (m[1].match(/https?:\/\/\S+/i) || [""])[0].replace(/[)\].,>]+$/, ""); if (u) link = u; }
+        const n = l.match(/^MINHA ANOTA[ÇC][ÃA]O\s*:\s*(.+)$/i); if (n && !nota) nota = n[1].trim();
+      });
+      return link || nota ? { link, nota } : null;
+    });
   }
   // Uma copy pode trazer mais de um roteiro ("ROTEIRO 1", "VERSÃO 2", "OPÇÃO B"... ou a CENA 1 recomeçando). Separa cada um.
   function separarRoteirosDoCurso(txt) {
@@ -1559,14 +1577,14 @@ REGRAS: entregue tudo agora, sem fazer perguntas antes: o que faltar fica [entre
   }
   function abrirRoteiro(txt, produto, qual) {
     const roteiros = separarRoteiros(txt), n = Math.min(Math.max(0, qual || 0), roteiros.length - 1);
-    const { cenas, ganchos, titulo } = roteiros[n];
+    const { cenas, ganchos, titulo, ref } = roteiros[n];
     const palavras = cenas.reduce((t, c) => t + (c.fala.replace(/\[[^\]]*\]/g, "").match(/\S+/g) || []).length, 0), seg = Math.round(palavras / 3.25);
     const comCena = cenas.some((c) => c.imagem), nomeProd = String(produto || "").trim().slice(0, 60);
     const antigo = $("#roteiroCenas"); if (antigo) antigo.remove();
     const m = document.createElement("div"); m.id = "roteiroCenas"; m.className = "roteiro-tela"; m.setAttribute("role", "dialog"); m.setAttribute("aria-label", "Roteiro de gravação");
     const abas = roteiros.length > 1 ? `<div class="roteiro-abas" role="tablist" aria-label="Roteiros desta copy">${roteiros.map((r, k) => `<button type="button" class="chip" role="tab" data-roteiro="${k}" aria-pressed="${k === n}" aria-selected="${k === n}">Roteiro ${k + 1}${r.titulo ? " · " + esc(r.titulo.slice(0, 40)) : ""}</button>`).join("")}</div>` : "";
     m.innerHTML = `<div class="roteiro-caixa">
-      <div class="roteiro-topo"><div><p class="rot">Roteiro de gravação${roteiros.length > 1 ? ` · ${n + 1} de ${roteiros.length}` : ""}</p><h2>Vídeo TikTok${nomeProd ? " · " + esc(nomeProd) : ""}${roteiros.length > 1 ? ` · Roteiro ${n + 1}` : ""}</h2>${titulo ? `<p class="sub"><b>${esc(titulo)}</b></p>` : ""}<p class="sub">${cenas.length} cenas · ~${seg}s de fala (${palavras} palavras)</p></div>
+      <div class="roteiro-topo"><div><p class="rot">Roteiro de gravação${roteiros.length > 1 ? ` · ${n + 1} de ${roteiros.length}` : ""}</p><h2>Vídeo TikTok${nomeProd ? " · " + esc(nomeProd) : ""}${roteiros.length > 1 ? ` · Roteiro ${n + 1}` : ""}</h2>${titulo ? `<p class="sub"><b>${esc(titulo)}</b></p>` : ""}${ref ? `<p class="sub r-ref">${ref.link ? `Referência: <a href="${esc(ref.link)}" target="_blank" rel="noopener noreferrer">${esc(ref.link.replace(/^https?:\/\/(www\.)?/i, "").slice(0, 60))} ↗</a>` : ""}${ref.link && ref.nota ? "<br>" : ""}${ref.nota ? `Minha anotação: ${esc(ref.nota)}` : ""}</p>` : ""}<p class="sub">${cenas.length} cenas · ~${seg}s de fala (${palavras} palavras)</p></div>
         <div class="controles"><button class="btn sec pequeno" type="button" data-acao="imprimir-roteiro">Imprimir</button><button class="btn pequeno" type="button" data-acao="fechar-roteiro">Fechar</button></div></div>
       ${abas}
       <div class="roteiro-colunas${comCena ? "" : " uma"}"><span>Áudio / fala</span>${comCena ? "<span>Imagem / cena</span>" : ""}</div>
