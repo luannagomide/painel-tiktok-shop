@@ -59,6 +59,42 @@
     // abre o roteiro de gravação de um item: da biblioteca (roteiro_id) ou da aba Criar (referencia_id)
     const abrirDoItem = (x) => { const r = x.roteiro_id && rotDe(x.roteiro_id), f = x.referencia_id && refDe(x.referencia_id); if (r && r.texto) P.abrirRoteiro(r.texto, r.produto || r.titulo); else if (f) P.abrirRoteiro(f.copy, tituloRef(f)); else toast("Esse roteiro não tem texto.", true); };
     const hora = (h) => (h ? h.slice(0, 5) : "");
+    // Pedido para o Claude com TUDO da pasta: um roteiro por vídeo de referência e um por ideia.
+    // Os blocos vêm como "ROTEIRO 1: ...", "ROTEIRO 2: ...": o Ver roteiro de gravação separa cada um numa aba.
+    function pedidoMultiplo(pa, refs, ideias) {
+      const nomeEtq = (k) => ({ gancho: "gancho", demonstracao: "demonstração", prova: "prova", cta: "CTA", formato: "formato", outro: "outro" }[k] || "");
+      const blocos = refs.map((x, i) => {
+        const tx = (x.texto || "").trim();
+        return [`REFERÊNCIA ${i + 1} · ${rotuloLink(x.link)} · ${x.link}`,
+          x.etiqueta ? `O que esse vídeo tem de bom: ${nomeEtq(x.etiqueta)}` : "",
+          (x.nota || "").trim() ? `Minha anotação: ${x.nota.trim()}` : "",
+          tx ? `O que a pessoa fala no vídeo:\n"""\n${tx}\n"""` : "Ainda sem transcrição. Você não consegue abrir o link: modele pelo que eu anotei. Se a minha anotação não for suficiente, escreva só a linha \"Transcreva esse vídeo no painel e me mande de novo\" no lugar das cenas desse roteiro."
+        ].filter(Boolean).join("\n");
+      }).join("\n\n");
+      const abertas = ideias.filter((i) => !i.feito);
+      const nRef = refs.length, nId = abertas.length, total = nRef + nId;
+      const qual = pa.tipo === "tema" ? "TEMA" : "PRODUTO";
+      return `Use a skill roteiro-tiktok-shop. Quero VÁRIOS roteiros de TikTok Shop a partir da minha pasta de pesquisa: ${nRef ? `um roteiro para CADA vídeo de referência (${nRef})` : ""}${nRef && nId ? " e " : ""}${nId ? `um roteiro para CADA ideia minha (${nId})` : ""}, ${total} roteiros no total. Em cada roteiro baseado numa referência, mantenha a estrutura, a ordem e o ritmo daquele vídeo, mas sem copiar frases.
+
+${qual}: ${pa.nome}${pa.tipo === "tema" ? " (o produto eu escolho depois; deixe [produto] entre colchetes)" : ""}
+${(pa.notas || "").trim() ? `\nMINHAS ANOTAÇÕES SOBRE ESSE ${qual}:\n${pa.notas.trim()}\n` : ""}${nRef ? `\nVÍDEOS DE REFERÊNCIA (${nRef}):\n\n${blocos}\n` : ""}${nId ? `\nMINHAS IDEIAS (${nId}):\n${abertas.map((i, k) => `${k + 1}. ${i.texto}`).join("\n")}\n` : ""}
+ENTREGUE, em português do Brasil, ${total} blocos seguidos, numerados de 1 a ${total}${nRef ? `: primeiro os ${nRef} das referências, na ordem` : ""}${nId ? `${nRef ? ", depois" : ":"} os ${nId} das ideias, na ordem` : ""}. Cada bloco EXATAMENTE neste formato, sem comentários entre as cenas:
+
+ROTEIRO 1: um nome curto para o roteiro · ${nRef ? "referência 1" : "ideia 1"}
+ESTRUTURA DA REFERÊNCIA: as partes (gancho, problema, demonstração, prova, chamada pro carrinho) com os segundos de cada uma (palavras ÷ 3,25 = segundos). Nos roteiros de ideia, escreva a estrutura que você escolheu.
+POR QUE PRENDE: 1 frase sobre o gancho.
+CENA 1
+FALA: o que eu falo, do jeito que eu falo
+IMAGEM: o que aparece na tela (enquadramento, produto, demonstração)
+TEXTO NA TELA: só se tiver (na cena 1, a headline do gancho)
+CENA 2
+(e assim por diante)
+3 GANCHOS ALTERNATIVOS: um por linha.
+
+Depois do último bloco, uma linha: QUAL GRAVAR PRIMEIRO: qual roteiro tem mais chance de vender e por quê, em 1 frase.
+
+REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não invente preço, desconto nem característica do produto. Nada de promessa de cura, resultado garantido ou urgência que a loja não deu. Sem emoji e sem travessão.`;
+    }
     // Pedido para o Claude: modelar um roteiro parecido com as referências deste roteiro.
     // A saída usa o mesmo formato da aba Criar (CENA / FALA / IMAGEM / TEXTO NA TELA), que o Ver roteiro de gravação lê.
     function montarPedido(r, refs) {
@@ -419,15 +455,12 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
           L.editRot = null; L.linksDe = null; irPara("roteiros");
         }
         else if (a === "pedido-pasta") {
-          const comTexto = refs.filter((x) => (x.texto || "").trim());
-          if (!comTexto.length && !ideias.length && !(pa.notas || "").trim()) { toast("Transcreva um vídeo ou anote uma ideia antes.", true); return; }
-          const abertas = ideias.filter((i) => !i.feito).map((i) => "- " + i.texto).join("\n");
-          const notasRef = comTexto.filter((x) => x.nota || x.etiqueta).map((x) => `- ${rotuloLink(x.link)}: ${[ETIQUETAS[x.etiqueta || ""] && x.etiqueta ? "bom de " + ETIQUETAS[x.etiqueta].toLowerCase() : "", x.nota || ""].filter(Boolean).join(" · ")}`).join("\n");
-          const extra = [pa.tipo === "tema" ? `TEMA: ${pa.nome} (o produto eu escolho depois; deixe [produto] entre colchetes)` : "", notasRef ? `O QUE EU GOSTEI EM CADA REFERÊNCIA:\n${notasRef}` : "", abertas ? `MINHAS IDEIAS PARA ESSE ${pa.tipo === "tema" ? "TEMA" : "PRODUTO"} (use as que encaixarem):\n${abertas}` : "", (pa.notas || "").trim() ? `MINHAS ANOTAÇÕES:\n${pa.notas.trim()}` : ""].filter(Boolean).join("\n\n");
-          const refsP = comTexto.length ? comTexto.map((x) => ({ u: x.link, tx: x.texto })) : [{ u: "(sem vídeo transcrito)", tx: "[sem referência: use só as minhas ideias e anotações]" }];
-          const pedido = montarPedido({ produto: pa.tipo === "produto" ? pa.nome : "", titulo: "", formato: "", obs: "", extra }, refsP);
-          try { await navigator.clipboard.writeText(pedido); toast("Pedido copiado. Cole na conversa com o Claude."); }
-          catch (_) { const ta2 = document.createElement("textarea"); ta2.value = pedido; document.body.appendChild(ta2); ta2.select(); try { document.execCommand("copy"); toast("Pedido copiado. Cole na conversa com o Claude."); } catch (__) { toast("Não consegui copiar sozinho.", true); } ta2.remove(); }
+          if (!refs.length && !ideias.filter((i) => !i.feito).length) { toast("Adicione um vídeo de referência ou anote uma ideia antes.", true); return; }
+          const sem = refs.filter((x) => !(x.texto || "").trim()).length;
+          const pedido = pedidoMultiplo(pa, refs, ideias);
+          const aviso = sem ? ` Atenção: ${sem} vídeo(s) ainda sem transcrição.` : "";
+          try { await navigator.clipboard.writeText(pedido); toast("Pedido copiado. Cole na conversa com o Claude." + aviso, !!sem); }
+          catch (_) { const ta2 = document.createElement("textarea"); ta2.value = pedido; document.body.appendChild(ta2); ta2.select(); try { document.execCommand("copy"); toast("Pedido copiado. Cole na conversa com o Claude." + aviso, !!sem); } catch (__) { toast("Não consegui copiar sozinho.", true); } ta2.remove(); }
         }
         else if (a === "apagar-pasta") { if (!confirm(`Apagar a pasta "${pa.nome}" com as referências e ideias dela? Os roteiros que saíram dela continuam.`)) return; try { await apagar("pastas", pa.id); L.pastas = L.pastas.filter((y) => y.id !== pa.id); L.prefs = L.prefs.filter((y) => y.pasta_id !== pa.id); L.pastaAberta = null; toast("Pasta apagada."); telaReferencias(el); } catch (er) { toast(amigavel(er), true); } }
       };
