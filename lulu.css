@@ -139,3 +139,7 @@
 /* referência clicável na tela de gravação (27/11) */
 .r-ref { margin-top: 4px !important; }
 .r-ref a { color: inherit; text-decoration: underline; text-underline-offset: 2px; font-weight: 600; }
+
+/* agendar gravação direto da pasta (27/11) */
+.lu-agendar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.lu-agendar .inp { width: auto; padding: 7px 10px; }

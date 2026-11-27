@@ -385,8 +385,10 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
               <label class="lbl" for="paNotas" style="margin-top:14px">Anotações livres</label><textarea class="inp" id="paNotas" data-campo="notas" rows="6" maxlength="10000" placeholder="Tudo o que você pensar sobre esse produto ou tema">${esc(pa.notas || "")}</textarea>
               <p class="frase" style="margin-top:6px">Salva sozinho quando você sai do campo.</p></div>
             <div class="card"><div class="card-topo"><h2>O que já saiu daqui</h2></div>
-              <ul class="lista-foco">${rots.map((r) => `<li><span class="nome">${esc(r.titulo)}</span><span class="selo">${STATUS_ROT[r.status] || r.status}</span><small>${r.texto ? `<button class="link" type="button" data-lu="ver-rot-pasta" data-id="${r.id}">ver roteiro de gravação</button> · ` : ""}<button class="link" type="button" data-lu="editar-rot-pasta" data-id="${r.id}">editar aqui</button></small></li>`).join("") || '<li><span class="nome lu-cinza">Nenhum roteiro ainda.</span></li>'}
-              ${agenda.map((c) => `<li><span class="nome"><i class="lu-ponto t-${c.tipo}"></i>${esc(c.titulo)}</span><span class="val">${P.dataBR(c.data)}</span></li>`).join("")}</ul>
+              <ul class="lista-foco">${rots.map((r) => { const ag = L.cal.filter((c) => c.roteiro_id === r.id && c.data >= hoje()).sort((a, b) => a.data.localeCompare(b.data))[0]; return `<li><span class="nome">${esc(r.titulo)}</span><span class="selo">${STATUS_ROT[r.status] || r.status}</span>
+                <small>${ag ? `<span class="selo sobe">na agenda: ${P.dataBR(ag.data)}${ag.hora ? " " + ag.hora.slice(0, 5) : ""}</span> ` : ""}${r.texto ? `<button class="link" type="button" data-lu="ver-rot-pasta" data-id="${r.id}">ver roteiro de gravação</button> · ` : ""}<button class="link" type="button" data-lu="editar-rot-pasta" data-id="${r.id}">editar aqui</button> · <button class="link" type="button" data-lu="agendar-rot-pasta" data-id="${r.id}">${ag ? "agendar outro dia" : "agendar gravação"}</button></small>
+                ${L.agendandoRot === r.id ? `<div class="lu-agendar"><input class="inp" type="date" id="agData" value="${P.somaDias(hoje(), 1)}" aria-label="Dia da gravação"><input class="inp" type="time" id="agHora" aria-label="Hora (opcional)"><button class="btn pequeno" type="button" data-lu="confirma-agenda" data-id="${r.id}">Pôr no calendário</button><button class="link" type="button" data-lu="cancela-agenda">cancelar</button></div>` : ""}</li>`; }).join("") || '<li><span class="nome lu-cinza">Nenhum roteiro ainda.</span></li>'}
+              ${agenda.filter((c) => !rots.some((r) => r.id === c.roteiro_id)).map((c) => `<li><span class="nome"><i class="lu-ponto t-${c.tipo}"></i>${esc(c.titulo)}</span><span class="val">${P.dataBR(c.data)}</span></li>`).join("")}</ul>
               <button class="link" type="button" data-lu="apagar-pasta" style="margin-top:12px">apagar esta pasta</button></div>
           </div>
         </div>
@@ -397,6 +399,7 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
               <div><label class="lbl" for="rpFormato">Formato</label><select class="inp" id="rpFormato"><option value="">(escolher)</option>${FORMATOS.map((f) => `<option${er && er.formato === f ? " selected" : ""}>${f}</option>`).join("")}</select></div>
               <div><label class="lbl" for="rpStatus">Situação</label><select class="inp" id="rpStatus">${opcoes(STATUS_ROT, er ? er.status : "pronto")}</select></div>
             </div>
+            ${er ? "" : `<div class="lu-grade lu-grade-2"><div><label class="lbl" for="rpData">Gravar no dia (opcional)</label><input class="inp" type="date" id="rpData"></div><div><label class="lbl" for="rpHora">Hora (opcional)</label><input class="inp" type="time" id="rpHora"></div></div>`}
             <div><label class="lbl" for="rpTexto">Roteiro (escreva ou cole a resposta do Claude)</label><textarea class="inp" id="rpTexto" rows="10" maxlength="20000" placeholder="CENA 1&#10;FALA: ...&#10;IMAGEM: ...&#10;TEXTO NA TELA: ...">${esc(er ? er.texto || "" : "")}</textarea></div>
             <div class="controles"><button class="btn pequeno" type="submit">${er ? "Salvar roteiro" : "Guardar roteiro"}</button><button class="btn sec pequeno" type="button" data-lu="previa-pasta">Ver roteiro de gravação</button></div>
           </form></div>`; })()}`;
@@ -404,6 +407,10 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
       const salvarPasta = async (d, msg) => { try { trocar(L.pastas, await salvar("pastas", d, pa.id)); if (msg) toast(msg); } catch (er) { toast(amigavel(er), true); } };
       const salvarRef = async (id, d) => { try { const x = await salvar("pasta_refs", d, id); const i = L.prefs.findIndex((y) => y.id === id); if (i >= 0) L.prefs[i] = x; } catch (er) { toast(amigavel(er), true); } };
       const salvarIdeias = async (l) => { await salvarPasta({ ideias: l }); telaPasta(el, pastaDe(pa.id)); };
+      const agendarGravacao = async (r, data, hora) => {
+        const c = await salvar("calendario", { data, hora: hora || null, titulo: ("Gravar: " + r.titulo).slice(0, 160), tipo: "gravar", plataforma: "tiktok", roteiro_id: r.id });
+        L.cal.push(c); return c;
+      };
       // a caixa da anotação cresce com o texto, para ler tudo sem rolar
       const ajusta = (ta) => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + 2 + "px"; };
       el.querySelectorAll("textarea.lu-nota").forEach((ta) => { ajusta(ta); ta.addEventListener("input", () => ajusta(ta)); });
@@ -415,7 +422,13 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
           const rs = refsDa(pa2.id);
           Object.assign(d, { pasta_id: pa2.id, produto: pa2.tipo === "produto" ? pa2.nome : null, links: rs.map((x) => x.link).slice(0, 50), transcricoes: Object.fromEntries(rs.filter((x) => x.texto).map((x) => [x.link, x.texto])) });
         }
-        try { trocar(L.rot, await salvar("roteiros", d, L.rotPastaEdit)); toast(L.rotPastaEdit ? "Roteiro salvo." : "Roteiro guardado. Ele também está na aba Roteiros."); L.rotPastaEdit = null; telaPasta(el, pastaDe(pa.id) || pa2); }
+        const dia = L.rotPastaEdit ? "" : val(el, "rpData"), hr = L.rotPastaEdit ? "" : val(el, "rpHora");
+        try {
+          const salvo = await salvar("roteiros", d, L.rotPastaEdit); trocar(L.rot, salvo);
+          if (dia) { await agendarGravacao(salvo, dia, hr); toast(`Roteiro guardado e gravação marcada no calendário para ${P.dataBR(dia)}.`); }
+          else toast(L.rotPastaEdit ? "Roteiro salvo." : "Roteiro guardado. Ele também está na aba Roteiros.");
+          L.rotPastaEdit = null; telaPasta(el, pastaDe(pa.id) || pa2);
+        }
         catch (er) { toast(amigavel(er), true); }
       });
       el.querySelector("#luFormIdeia").addEventListener("submit", (e) => { e.preventDefault(); const tx = val(el, "paIdeia"); if (!tx) return; const atual = (pastaDe(pa.id) || pa).ideias || []; salvarIdeias([...atual, { id: novaIdeiaId(), texto: tx.slice(0, 300), feito: false }]); });
@@ -437,6 +450,12 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
         if (a === "voltar") { L.pastaAberta = null; L.rotPastaEdit = null; telaReferencias(el); }
         else if (a === "ver-rot-pasta") { const r = rotDe(id); if (r && r.texto) P.abrirRoteiro(r.texto, r.produto || r.titulo); }
         else if (a === "editar-rot-pasta") { L.rotPastaEdit = id; telaPasta(el, pa); const c = el.querySelector("#luEscrever"); if (c) c.scrollIntoView({ behavior: "smooth", block: "start" }); }
+        else if (a === "agendar-rot-pasta") { L.agendandoRot = id; telaPasta(el, pa); const d = el.querySelector("#agData"); if (d) d.focus(); }
+        else if (a === "cancela-agenda") { L.agendandoRot = null; telaPasta(el, pa); }
+        else if (a === "confirma-agenda") {
+          const r = rotDe(id), dia = val(el, "agData"), hr = val(el, "agHora"); if (!r || !dia) { toast("Escolha o dia.", true); return; }
+          try { await agendarGravacao(r, dia, hr); toast(`Gravação marcada no calendário para ${P.dataBR(dia)}${hr ? " às " + hr : ""}.`); L.agendandoRot = null; telaPasta(el, pa); } catch (er) { toast(amigavel(er), true); }
+        }
         else if (a === "cancelar-rot-pasta") { L.rotPastaEdit = null; telaPasta(el, pa); }
         else if (a === "previa-pasta") { const tx = el.querySelector("#rpTexto").value; if (!tx.trim()) { toast("Escreva ou cole o roteiro primeiro.", true); return; } P.abrirRoteiro(tx, pa.tipo === "produto" ? pa.nome : val(el, "rpTitulo")); }
         else if (a === "add-ref") {
