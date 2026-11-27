@@ -149,3 +149,10 @@
 .lu-arquivadas > summary { cursor: pointer; font-weight: 600; color: var(--muted); }
 .lu-pasta-arq { opacity: .75; }
 .lu-btn-apagar { color: var(--vermelho) !important; border-color: var(--vermelho) !important; }
+
+/* etapa da pasta (27/11) */
+.lu-etapa { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.lu-etapa .selo { margin-top: 0; }
+.lu-trilha { display: inline-flex; gap: 3px; }
+.lu-trilha i { width: 16px; height: 5px; border-radius: 3px; background: var(--tint); }
+.lu-trilha i.on { background: var(--ouro); }

@@ -316,6 +316,24 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
     const ETIQUETAS = { "": "o que ele tem de bom?", gancho: "Gancho", demonstracao: "Demonstração", prova: "Prova", cta: "CTA", formato: "Formato", outro: "Outro" };
     const pastaDe = (id) => L.pastas.find((x) => x.id === id) || null;
     const refsDa = (id) => L.prefs.filter((x) => x.pasta_id === id);
+    const etapaPasta = (pa) => {
+      const rots = roteirosDa(pa), ids = rots.map((r) => r.id);
+      const grav = L.cal.filter((c) => c.tipo === "gravar" && ids.includes(c.roteiro_id));
+      const pend = grav.filter((c) => !c.feito).sort((a, b) => a.data.localeCompare(b.data));
+      const prox = pend.find((c) => c.data >= hoje()), passou = pend.filter((c) => c.data < hoje()).pop();
+      if (rots.some((r) => r.status === "postado")) return { txt: "Postado", cls: "sobe", n: 4 };
+      if (pa.status === "gravado" || rots.some((r) => r.status === "gravado") || grav.some((c) => c.feito)) return { txt: "Gravado", cls: "sobe", n: 4 };
+      if (pa.status === "pausado") return { txt: "Pausada", cls: "", n: rots.length ? 2 : 1 };
+      if (prox) return { txt: `Gravação marcada ${P.dataBR(prox.data)}`, cls: "novo", n: 3 };
+      if (passou) return { txt: `Gravação era ${P.dataBR(passou.data)}`, cls: "alerta", n: 3 };
+      if (rots.some((r) => r.status === "pronto")) return { txt: pa.status === "vou_gravar" ? "Roteiro pronto · vou gravar" : "Roteiro pronto", cls: "novo", n: 2 };
+      if (rots.length) return { txt: "Roteiro começado", cls: "alerta", n: 2 };
+      if (pa.status === "vou_gravar") return { txt: "Vou gravar · falta roteiro", cls: "alerta", n: 1 };
+      if (refsDa(pa.id).length || (pa.ideias || []).length || (pa.notas || "").trim()) return { txt: "Só referências", cls: "", n: 1 };
+      return { txt: "Vazia", cls: "", n: 0 };
+    };
+    const ETAPAS = ["Referências", "Roteiro", "Agendada", "Gravada"];
+    const trilha = (n) => `<span class="lu-trilha" aria-hidden="true">${ETAPAS.map((e, i) => `<i class="${i < n ? "on" : ""}" title="${e}"></i>`).join("")}</span>`;
     const roteirosDa = (pa) => L.rot.filter((r) => r.pasta_id === pa.id || (!r.pasta_id && pa.tipo === "produto" && r.produto && r.produto.trim().toLowerCase() === pa.nome.trim().toLowerCase()));
     const novaIdeiaId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     // atalhos: amostras e produtos que vendem e ainda não têm pasta
@@ -344,7 +362,7 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
         ${(() => {
           const cartao = (pa) => { const nr = refsDa(pa.id).length, ni = (pa.ideias || []).filter((i) => !i.feito).length, nro = roteirosDa(pa).length; return `<button type="button" class="card lu-pasta${["gravado", "pausado"].includes(pa.status) ? " lu-pasta-arq" : ""}" data-lu="abrir-pasta" data-id="${pa.id}">
             <span class="lu-pasta-topo"><b>${esc(pa.nome)}</b><span class="selo">${pa.tipo === "tema" ? "tema" : "produto"}</span></span>
-            <span class="lu-cinza">${STATUS_PASTA[pa.status] || pa.status}</span>
+            ${(() => { const et = etapaPasta(pa); return `<span class="lu-etapa"><span class="selo ${et.cls}">${esc(et.txt)}</span>${trilha(et.n)}</span>`; })()}
             <span class="lu-pasta-num"><span><b>${nr}</b> referência(s)</span><span><b>${ni}</b> ideia(s)</span><span><b>${nro}</b> roteiro(s)</span></span></button>`; };
           const arq = L.pastas.filter((pa) => ["gravado", "pausado"].includes(pa.status)), ativas = L.pastas.filter((pa) => !arq.includes(pa));
           return `<div class="lu-pastas">${ativas.map(cartao).join("") || `<p class="vazio">${L.pastas.length ? "Nenhuma pasta em andamento." : "Nenhuma pasta ainda. Crie a primeira aqui em cima."}</p>`}</div>
