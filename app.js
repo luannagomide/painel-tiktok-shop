@@ -1543,6 +1543,7 @@ REGRAS: entregue tudo agora, sem fazer perguntas antes: o que faltar fica [entre
     const refs = refsDosBlocos(txt);
     if (refs.length === lista.length) lista.forEach((r, i) => { if (refs[i]) r.ref = refs[i]; });
     else if (lista.length === 1 && refs.some(Boolean)) lista[0].ref = refs.find(Boolean);
+    lista.forEach((r) => { if (r.titulo) r.titulo = r.titulo.replace(/\[([^\]]*)\]\((https?:[^)\s]*)\)/gi, "").replace(/https?:\/\/\S+/gi, "").replace(/(\s*·\s*)+$/g, "").replace(/\s*·\s*·\s*/g, " · ").trim(); });
     return lista;
   }
   function refsDosBlocos(txt) {
@@ -1551,11 +1552,16 @@ REGRAS: entregue tudo agora, sem fazer perguntas antes: o que faltar fica [entre
     const ini = linhas.map((l, k) => (cab(l) ? k : -1)).filter((k) => k >= 0);
     const fatias = ini.length >= 2 ? ini.map((k, n) => linhas.slice(k, n + 1 < ini.length ? ini[n + 1] : linhas.length)) : [linhas];
     return fatias.map((ls) => {
-      let link = "", nota = "";
+      let link = "", nota = "", noCabecalho = true;
+      const urlDe = (t) => { const md = t.match(/\]\((https?:\/\/[^)\s]+)\)/i); const u = md ? md[1] : (t.match(/https?:\/\/[^\s)\]>]+/i) || [""])[0]; return u.replace(/[.,;]+$/, ""); };
       ls.forEach((l) => {
-        const m = l.match(/^REFER[ÊE]NCIA\s*:\s*(.*)$/i); if (m && !link) { const u = (m[1].match(/https?:\/\/\S+/i) || [""])[0].replace(/[)\].,>]+$/, ""); if (u) link = u; }
+        if (/^CENA\s*\d+/i.test(l)) noCabecalho = false;
+        const m = l.match(/^REFER[ÊE]NCIA\s*:\s*(.*)$/i); if (m && !link) { const u = urlDe(m[1]); if (u) link = u; }
+        else if (noCabecalho && !link) { const u = urlDe(l); if (u) link = u; }
         const n = l.match(/^MINHA ANOTA[ÇC][ÃA]O\s*:\s*(.+)$/i); if (n && !nota) nota = n[1].trim();
       });
+      // a anotação que ela escreveu na pasta para esse link (quando o Claude não repetiu)
+      if (link && !nota && typeof window.luluNotaDoLink === "function") nota = window.luluNotaDoLink(link) || "";
       return link || nota ? { link, nota } : null;
     });
   }

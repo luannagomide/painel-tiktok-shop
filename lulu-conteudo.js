@@ -47,6 +47,9 @@
       } catch (e) { L.erro = amigavel(e); }
     }
     const salvar = async (tab, d, id) => (id ? ok(await sb().from(tab).update(d).eq("id", id).select("*").single()) : ok(await sb().from(tab).insert(d).select("*").single()));
+    // a tela de gravação pergunta aqui a anotação de um link de referência (o mesmo link, com ou sem www e barra no fim)
+    const normaLink = (u) => String(u || "").trim().toLowerCase().replace(/^https?:\/\/(www\.|m\.)?/, "").replace(/[/?#]+$/, "");
+    window.luluNotaDoLink = (u) => { const x = (L.prefs || []).find((y) => normaLink(y.link) === normaLink(u) && (y.nota || "").trim()); return x ? x.nota.trim() : ""; };
     const apagar = async (tab, id) => ok(await sb().from(tab).delete().eq("id", id));
     const trocar = (lista, item) => { const i = lista.findIndex((x) => x.id === item.id); if (i >= 0) lista[i] = item; else lista.unshift(item); };
     const opcoes = (obj, atual) => Object.entries(obj).map(([k, v]) => `<option value="${k}"${atual === k ? " selected" : ""}>${v}</option>`).join("");
