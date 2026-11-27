@@ -341,15 +341,21 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
             <button class="btn pequeno" type="submit">Criar pasta</button>
           </form>
           ${sug.length ? `<p class="lbl" style="margin:14px 0 6px">Atalho: suas amostras e produtos que vendem</p><div class="chips">${sug.map((n) => `<button class="chip" type="button" data-lu="sug-pasta" data-n="${esc(n)}">+ ${esc(n.length > 42 ? n.slice(0, 42) + "…" : n)}</button>`).join("")}</div>` : ""}</div>
-        <div class="lu-pastas">${L.pastas.map((pa) => { const nr = refsDa(pa.id).length, ni = (pa.ideias || []).filter((i) => !i.feito).length, nro = roteirosDa(pa).length; return `<button type="button" class="card lu-pasta" data-lu="abrir-pasta" data-id="${pa.id}">
+        ${(() => {
+          const cartao = (pa) => { const nr = refsDa(pa.id).length, ni = (pa.ideias || []).filter((i) => !i.feito).length, nro = roteirosDa(pa).length; return `<button type="button" class="card lu-pasta${["gravado", "pausado"].includes(pa.status) ? " lu-pasta-arq" : ""}" data-lu="abrir-pasta" data-id="${pa.id}">
             <span class="lu-pasta-topo"><b>${esc(pa.nome)}</b><span class="selo">${pa.tipo === "tema" ? "tema" : "produto"}</span></span>
             <span class="lu-cinza">${STATUS_PASTA[pa.status] || pa.status}</span>
-            <span class="lu-pasta-num"><span><b>${nr}</b> referência(s)</span><span><b>${ni}</b> ideia(s)</span><span><b>${nro}</b> roteiro(s)</span></span></button>`; }).join("") || '<p class="vazio">Nenhuma pasta ainda. Crie a primeira aqui em cima.</p>'}</div>`;
+            <span class="lu-pasta-num"><span><b>${nr}</b> referência(s)</span><span><b>${ni}</b> ideia(s)</span><span><b>${nro}</b> roteiro(s)</span></span></button>`; };
+          const arq = L.pastas.filter((pa) => ["gravado", "pausado"].includes(pa.status)), ativas = L.pastas.filter((pa) => !arq.includes(pa));
+          return `<div class="lu-pastas">${ativas.map(cartao).join("") || `<p class="vazio">${L.pastas.length ? "Nenhuma pasta em andamento." : "Nenhuma pasta ainda. Crie a primeira aqui em cima."}</p>`}</div>
+          ${arq.length ? `<details class="lu-arquivadas"${L.verArquivadas ? " open" : ""}><summary>Já gravadas ou pausadas (${arq.length})</summary><div class="lu-pastas">${arq.map(cartao).join("")}</div></details>` : ""}`;
+        })()}`;
       const criar = async (nome, tipo) => {
         try { const pa = await salvar("pastas", { nome: nome.slice(0, 160), tipo }); L.pastas.unshift(pa); L.pastaAberta = pa.id; toast("Pasta criada."); telaReferencias(el); } catch (er) { toast(amigavel(er), true); }
       };
       el.querySelector("#luFormPasta").addEventListener("submit", (e) => { e.preventDefault(); const n = val(el, "pNome"); if (n) criar(n, val(el, "pTipoP")); });
       el.onchange = null;
+      const det = el.querySelector(".lu-arquivadas"); if (det) det.addEventListener("toggle", () => { L.verArquivadas = det.open; });
       el.onclick = (e) => {
         const t = e.target.closest("[data-lu]"); if (!t) return;
         if (t.dataset.lu === "abrir-pasta") { L.pastaAberta = +t.dataset.id; L.rotPastaEdit = null; telaReferencias(el); window.scrollTo(0, 0); }
@@ -360,7 +366,9 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
       const refs = refsDa(pa.id), ideias = pa.ideias || [], rots = roteirosDa(pa);
       const agenda = L.cal.filter((c) => c.roteiro_id && rots.some((r) => r.id === c.roteiro_id) && c.data >= hoje());
       el.innerHTML = `<div class="cabeca"><div><button class="link" type="button" data-lu="voltar">‹ todas as pastas</button><h1>${esc(pa.nome)}</h1><p>${pa.tipo === "tema" ? "Tema" : "Produto"} · ${refs.length} referência(s) · ${ideias.filter((i) => !i.feito).length} ideia(s) em aberto</p></div>
-          <div class="controles"><button class="btn pequeno" type="button" data-lu="pedido-pasta">Copiar o pedido para o Claude</button><button class="btn sec pequeno" type="button" data-lu="roteiro-pasta">Criar roteiro</button></div></div>
+          <div class="controles"><button class="btn pequeno" type="button" data-lu="pedido-pasta">Copiar o pedido para o Claude</button><button class="btn sec pequeno" type="button" data-lu="roteiro-pasta">Criar roteiro</button>
+            ${pa.status === "gravado" ? '<button class="btn sec pequeno" type="button" data-lu="reabrir-pasta">Voltar para em andamento</button>' : '<button class="btn sec pequeno" type="button" data-lu="gravada-pasta">✓ Marcar como gravada</button>'}
+            <button class="btn sec pequeno lu-btn-apagar" type="button" data-lu="apagar-pasta">Apagar pasta</button></div></div>
         <div class="card"><div class="lu-grade">
           <div><label class="lbl" for="paNome">Nome</label><input class="inp" id="paNome" data-campo="nome" maxlength="160" value="${esc(pa.nome)}"></div>
           <div><label class="lbl" for="paTipo">É um</label><select class="inp" id="paTipo" data-campo="tipo"><option value="produto"${pa.tipo === "produto" ? " selected" : ""}>Produto</option><option value="tema"${pa.tipo === "tema" ? " selected" : ""}>Tema</option></select></div>
@@ -389,7 +397,7 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
                 <small>${ag ? `<span class="selo sobe">na agenda: ${P.dataBR(ag.data)}${ag.hora ? " " + ag.hora.slice(0, 5) : ""}</span> ` : ""}${r.texto ? `<button class="link" type="button" data-lu="ver-rot-pasta" data-id="${r.id}">ver roteiro de gravação</button> · ` : ""}<button class="link" type="button" data-lu="editar-rot-pasta" data-id="${r.id}">editar aqui</button> · <button class="link" type="button" data-lu="agendar-rot-pasta" data-id="${r.id}">${ag ? "agendar outro dia" : "agendar gravação"}</button></small>
                 ${L.agendandoRot === r.id ? `<div class="lu-agendar"><input class="inp" type="date" id="agData" value="${P.somaDias(hoje(), 1)}" aria-label="Dia da gravação"><input class="inp" type="time" id="agHora" aria-label="Hora (opcional)"><button class="btn pequeno" type="button" data-lu="confirma-agenda" data-id="${r.id}">Pôr no calendário</button><button class="link" type="button" data-lu="cancela-agenda">cancelar</button></div>` : ""}</li>`; }).join("") || '<li><span class="nome lu-cinza">Nenhum roteiro ainda.</span></li>'}
               ${agenda.filter((c) => !rots.some((r) => r.id === c.roteiro_id)).map((c) => `<li><span class="nome"><i class="lu-ponto t-${c.tipo}"></i>${esc(c.titulo)}</span><span class="val">${P.dataBR(c.data)}</span></li>`).join("")}</ul>
-              <button class="link" type="button" data-lu="apagar-pasta" style="margin-top:12px">apagar esta pasta</button></div>
+</div>
           </div>
         </div>
         ${(() => { const er = L.rotPastaEdit ? rotDe(L.rotPastaEdit) : null; return `<div class="card" id="luEscrever"><div class="card-topo"><h2>${er ? "Editar roteiro" : "Escrever um roteiro aqui"}</h2><span class="sub">fica salvo também na aba Roteiros</span>${er ? '<span class="espaco"></span><button class="link" type="button" data-lu="cancelar-rot-pasta">cancelar edição</button>' : ""}</div>
@@ -450,6 +458,8 @@ REGRAS: o que eu não informei fica [entre colchetes] para eu ajustar. Não inve
         if (a === "voltar") { L.pastaAberta = null; L.rotPastaEdit = null; telaReferencias(el); }
         else if (a === "ver-rot-pasta") { const r = rotDe(id); if (r && r.texto) P.abrirRoteiro(r.texto, r.produto || r.titulo); }
         else if (a === "editar-rot-pasta") { L.rotPastaEdit = id; telaPasta(el, pa); const c = el.querySelector("#luEscrever"); if (c) c.scrollIntoView({ behavior: "smooth", block: "start" }); }
+        else if (a === "gravada-pasta") { await salvarPasta({ status: "gravado" }, "Pasta marcada como gravada. Ela fica no grupo \"Já gravadas\"."); L.pastaAberta = null; telaReferencias(el); }
+        else if (a === "reabrir-pasta") { await salvarPasta({ status: "pesquisando" }, "Pasta de volta para em andamento."); telaPasta(el, pastaDe(pa.id) || pa); }
         else if (a === "agendar-rot-pasta") { L.agendandoRot = id; telaPasta(el, pa); const d = el.querySelector("#agData"); if (d) d.focus(); }
         else if (a === "cancela-agenda") { L.agendandoRot = null; telaPasta(el, pa); }
         else if (a === "confirma-agenda") {

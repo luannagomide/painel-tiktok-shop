@@ -143,3 +143,9 @@
 /* agendar gravação direto da pasta (27/11) */
 .lu-agendar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 .lu-agendar .inp { width: auto; padding: 7px 10px; }
+
+/* pastas gravadas e apagar (27/11) */
+.lu-arquivadas { margin-top: 20px; }
+.lu-arquivadas > summary { cursor: pointer; font-weight: 600; color: var(--muted); }
+.lu-pasta-arq { opacity: .75; }
+.lu-btn-apagar { color: var(--vermelho) !important; border-color: var(--vermelho) !important; }
